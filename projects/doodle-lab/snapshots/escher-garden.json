@@ -1,0 +1,15 @@
+{
+ "title": "Escher Garden",
+ "blurb": "The checker garden fed through a Droste spiral: every ring holds the next copy, zooming one ratio per loop.",
+ "chain": "Complex Kaleidoscope → Droste Zoom → Glow",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "droste"
+ ],
+ "controls": "Knobs: Scale ratio, Spiral arms, Ring radius, Morph · Drag: colour and seam softness · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#escher-garden"
+}

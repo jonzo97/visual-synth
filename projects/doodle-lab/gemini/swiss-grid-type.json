@@ -1,0 +1,15 @@
+{
+ "title": "Swiss Grid Type",
+ "blurb": "A strict red, black and white typographic grid whose modules snap into new layouts on the beat. From the Neo Swiss style.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "typography",
+  "style study"
+ ],
+ "controls": "Sliders: Tempo, Seam Shear, Grid Density · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/037-style-neo-swiss-v2/index.html"
+}

@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clifford Attractor Density Map v2</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #03060f;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #overlay {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: rgba(3, 6, 16, 0.84);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #fff9ea;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 12px;
+      min-width: 250px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.72), 0 0 20px rgba(0, 240, 255, 0.08);
+      z-index: 10;
+      pointer-events: auto;
+    }
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      background: linear-gradient(90deg, #00f0ff 0%, #ffb338 50%, #ff2a8d 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .control {
+      margin-bottom: 11px;
+    }
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: #e2e8f0;
+      font-size: 11px;
+    }
+    .label-row span:last-child {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #ffb338;
+      font-size: 11px;
+    }
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #00f0ff;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
+      transition: transform 0.1s, background-color 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+      background: #ffb338;
+      box-shadow: 0 0 12px rgba(255, 179, 56, 0.8);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border: none;
+      border-radius: 50%;
+      background: #00f0ff;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
+    }
+    .hint {
+      font-size: 10px;
+      color: rgba(255, 249, 234, 0.42);
+      margin-top: 8px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas"></canvas>
+  <div id="overlay">
+    <div class="title">Clifford Attractor Density Map v2</div>
+    <div class="control">
+      <div class="label-row"><span>Spectral Dispersion</span><span id="val-disp">1.25</span></div>
+      <input type="range" id="disp" min="0.0" max="2.5" step="0.05" value="1.25">
+    </div>
+    <div class="control">
+      <div class="label-row"><span>Drift Speed</span><span id="val-drift">0.60</span></div>
+      <input type="range" id="drift" min="0.0" max="2.0" step="0.05" value="0.6">
+    </div>
+    <div class="control">
+      <div class="label-row"><span>Atmospheric Depth</span><span id="val-depth">1.60</span></div>
+      <input type="range" id="depth" min="0.2" max="3.0" step="0.05" value="1.6">
+    </div>
+    <div class="hint">Press [H] to hide controls</div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const seedParam = urlParams.get('seed');
+    const seed = seedParam !== null ? (parseInt(seedParam, 10) || 1) : 1;
+    const rng = mulberry32(seed >>> 0);
+
+    const overlay = document.getElementById('overlay');
+    const dispSlider = document.getElementById('disp');
+    const driftSlider = document.getElementById('drift');
+    const depthSlider = document.getElementById('depth');
+    const valDisp = document.getElementById('val-disp');
+    const valDrift = document.getElementById('val-drift');
+    const valDepth = document.getElementById('val-depth');
+
+    dispSlider.addEventListener('input', (e) => {
+      valDisp.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+    driftSlider.addEventListener('input', (e) => {
+      valDrift.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+    depthSlider.addEventListener('input', (e) => {
+      valDepth.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        overlay.style.display = (overlay.style.display === 'none') ? 'block' : 'none';
+      }
+    });
+
+    const canvas = document.getElementById('glcanvas');
+    const gl = canvas.getContext('webgl2', {
+      alpha: false,
+      depth: false,
+      stencil: false,
+      antialias: false,
+      preserveDrawingBuffer: false,
+      powerPreference: 'high-performance'
+    });
+
+    if (!gl) {
+      throw new Error('WebGL2 is not supported on this platform.');
+    }
+
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const info = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error('Shader compilation error: ' + info);
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vertShader, fragShader, transformFeedbackVaryings) {
+      const program = gl.createProgram();
+      gl.attachShader(program, vertShader);
+      if (fragShader) {
+        gl.attachShader(program, fragShader);
+      }
+      if (transformFeedbackVaryings) {
+        gl.transformFeedbackVaryings(program, transformFeedbackVaryings, gl.SEPARATE_ATTRIBS);
+      }
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const info = gl.getProgramInfoLog(program);
+        gl.deleteProgram(program);
+        throw new Error('Program link error: ' + info);
+      }
+      return program;
+    }
+
+    const updateVertSrc = `#version 300 es
+    precision highp float;
+
+    layout(location = 0) in vec4 in_state; // xy = pos, z = velocity, w = band (0, 1, 2)
+    out vec4 out_state;
+
+    uniform vec4 u_bandParams[3]; // [band]: a, b, c, d
+
+    void main() {
+      vec2 p = in_state.xy;
+      float band = in_state.w;
+      int idx = int(clamp(band + 0.1, 0.0, 2.0));
+      vec4 param = u_bandParams[idx];
+
+      if (isnan(p.x) || isnan(p.y) || abs(p.x) > 14.0 || abs(p.y) > 14.0) {
+        p = vec2(0.14 * (band + 1.0), -0.09 * (band + 1.0));
+      }
+
+      float a = param.x;
+      float b = param.y;
+      float c = param.z;
+      float d = param.w;
+
+      float nx = sin(a * p.y) + c * cos(a * p.x);
+      float ny = sin(b * p.x) + d * cos(b * p.y);
+      vec2 np = vec2(nx, ny);
+
+      float stepDist = length(np - p);
+      float smoothedVel = mix(in_state.z, stepDist, 0.35);
+
+      out_state = vec4(np, smoothedVel, band);
+    }`;
+
+    const emptyFragSrc = `#version 300 es
+    precision highp float;
+    void main() {}`;
+
+    const splatVertSrc = `#version 300 es
+    precision highp float;
+
+    layout(location = 0) in vec4 a_state; // xy = pos, z = velocity, w = band
+
+    uniform vec2 u_resolution;
+    uniform float u_zoom;
+    uniform float u_rot;
+    uniform vec2 u_pan;
+    uniform float u_depthField;
+
+    out vec3 v_color;
+    out float v_intensity;
+
+    // Phase-shifted spectral colors:
+    // Band 0: Cyan / Electric Turquoise
+    const vec3 COLOR_CYAN = vec3(0.02, 0.88, 1.00);
+    // Band 1: Amber / Honey Gold
+    const vec3 COLOR_AMBER = vec3(1.00, 0.65, 0.12);
+    // Band 2: Magenta / Radiant Orchid
+    const vec3 COLOR_MAGENTA = vec3(0.96, 0.12, 0.62);
+
+    void main() {
+      float cosR = cos(u_rot);
+      float sinR = sin(u_rot);
+      vec2 rpos = vec2(a_state.x * cosR - a_state.y * sinR, a_state.x * sinR + a_state.y * cosR) + u_pan;
+
+      float aspect = u_resolution.x / u_resolution.y;
+      vec2 ndc;
+      if (aspect >= 1.0) {
+        ndc = vec2(rpos.x / aspect, rpos.y) * u_zoom;
+      } else {
+        ndc = vec2(rpos.x, rpos.y * aspect) * u_zoom;
+      }
+
+      gl_Position = vec4(ndc, 0.0, 1.0);
+
+      // Atmospheric volumetric depth modulation:
+      // Slow particles stay sharp needles; fast particles bloom into volumetric atmospheric puffs
+      float speedNorm = clamp(a_state.z / 2.8, 0.0, 1.0);
+      float pointSize = mix(1.1, 1.1 + 4.8 * u_depthField, pow(speedNorm, 1.35));
+      gl_PointSize = clamp(pointSize, 1.0, 14.0);
+
+      int band = int(clamp(a_state.w + 0.1, 0.0, 2.0));
+      vec3 baseCol = (band == 0) ? COLOR_CYAN : ((band == 1) ? COLOR_AMBER : COLOR_MAGENTA);
+
+      // Energy distribution: diffuse splats distribute their intensity over larger area
+      float energy = 0.032 / (1.0 + 0.36 * (pointSize - 1.0) * (pointSize - 1.0));
+
+      v_color = baseCol;
+      v_intensity = energy;
+    }`;
+
+    const splatFragSrc = `#version 300 es
+    precision highp float;
+
+    in vec3 v_color;
+    in float v_intensity;
+
+    out vec4 fragColor;
+
+    void main() {
+      vec2 coord = gl_PointCoord - vec2(0.5);
+      float r2 = dot(coord, coord) * 4.0;
+      if (r2 > 1.0) discard;
+
+      // Soft gaussian profile for volumetric depth
+      float falloff = exp(-r2 * 3.0);
+      fragColor = vec4(v_color * (v_intensity * falloff), 1.0);
+    }`;
+
+    const quadVertSrc = `#version 300 es
+    precision highp float;
+
+    out vec2 v_uv;
+
+    void main() {
+      vec2 pos = vec2(
+        (gl_VertexID == 1 || gl_VertexID == 3) ? 1.0 : -1.0,
+        (gl_VertexID >= 2) ? 1.0 : -1.0
+      );
+      v_uv = pos * 0.5 + 0.5;
+      gl_Position = vec4(pos, 0.0, 1.0);
+    }`;
+
+    const fadeFragSrc = `#version 300 es
+    precision highp float;
+
+    in vec2 v_uv;
+    uniform sampler2D u_prevAccum;
+    uniform float u_persistence;
+
+    out vec4 fragColor;
+
+    void main() {
+      vec4 prev = texture(u_prevAccum, v_uv);
+      fragColor = prev * u_persistence;
+    }`;
+
+    const compositeFragSrc = `#version 300 es
+    precision highp float;
+
+    in vec2 v_uv;
+    uniform sampler2D u_accumTex;
+
+    out vec4 fragColor;
+
+    void main() {
+      vec3 accum = texture(u_accumTex, v_uv).rgb;
+
+      // Logarithmic tone mapping preserving subtle caustic filaments and spectral separation
+      const float k = 56.0;
+      vec3 mapped = log(vec3(1.0) + k * accum) / log(1.0 + k * 1.65);
+      vec3 col = clamp(mapped, 0.0, 1.0);
+
+      // Contrast enhancement
+      col = pow(col, vec3(0.92));
+
+      // Deep void background
+      vec3 bg = vec3(0.012, 0.024, 0.058);
+      col = mix(bg, col, clamp(length(col) * 1.8, 0.0, 1.0));
+
+      // Subtle atmospheric edge vignette
+      vec2 sc = (v_uv - 0.5) * 2.0;
+      float vig = 1.0 - 0.28 * dot(sc, sc);
+      col *= clamp(vig, 0.0, 1.0);
+
+      // Subtle dither to eliminate 8-bit quantization banding
+      float dither = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+      col += dither;
+
+      fragColor = vec4(col, 1.0);
+    }`;
+
+    const updateVertShader = createShader(gl, gl.VERTEX_SHADER, updateVertSrc);
+    const emptyFragShader = createShader(gl, gl.FRAGMENT_SHADER, emptyFragSrc);
+    const updateProgram = createProgram(gl, updateVertShader, emptyFragShader, ['out_state']);
+
+    const splatVertShader = createShader(gl, gl.VERTEX_SHADER, splatVertSrc);
+    const splatFragShader = createShader(gl, gl.FRAGMENT_SHADER, splatFragSrc);
+    const splatProgram = createProgram(gl, splatVertShader, splatFragShader);
+
+    const quadVertShader = createShader(gl, gl.VERTEX_SHADER, quadVertSrc);
+    const fadeFragShader = createShader(gl, gl.FRAGMENT_SHADER, fadeFragSrc);
+    const fadeProgram = createProgram(gl, quadVertShader, fadeFragShader);
+
+    const compositeFragShader = createShader(gl, gl.FRAGMENT_SHADER, compositeFragSrc);
+    const compositeProgram = createProgram(gl, quadVertShader, compositeFragShader);
+
+    const u_update_bandParams = gl.getUniformLocation(updateProgram, 'u_bandParams');
+
+    const u_splat_res = gl.getUniformLocation(splatProgram, 'u_resolution');
+    const u_splat_zoom = gl.getUniformLocation(splatProgram, 'u_zoom');
+    const u_splat_rot = gl.getUniformLocation(splatProgram, 'u_rot');
+    const u_splat_pan = gl.getUniformLocation(splatProgram, 'u_pan');
+    const u_splat_depth = gl.getUniformLocation(splatProgram, 'u_depthField');
+
+    const u_fade_tex = gl.getUniformLocation(fadeProgram, 'u_prevAccum');
+    const u_fade_persist = gl.getUniformLocation(fadeProgram, 'u_persistence');
+
+    const u_comp_tex = gl.getUniformLocation(compositeProgram, 'u_accumTex');
+
+    // Attractor archetypes scaled boldly so caustic folds bleed past the canvas boundaries
+    const PRESETS = [
+      { a: -1.4, b: 1.6, c: 1.0, d: 0.7, zoom: 0.62 },
+      { a: 1.7, b: 1.7, c: 0.6, d: 1.2, zoom: 0.60 },
+      { a: -1.7, b: 1.3, c: -0.1, d: -1.2, zoom: 0.64 },
+      { a: -1.4, b: 1.5, c: 1.8, d: 1.7, zoom: 0.58 },
+      { a: 1.5, b: -1.8, c: 1.6, d: 0.9, zoom: 0.60 },
+      { a: -1.8, b: -2.0, c: -0.5, d: -0.9, zoom: 0.58 },
+      { a: -1.3, b: 1.8, c: 1.1, d: 1.5, zoom: 0.61 },
+      { a: 1.6, b: -0.6, c: -1.2, d: 1.6, zoom: 0.63 }
+    ];
+
+    const presetIndex = Math.floor(rng() * PRESETS.length);
+    const basePreset = PRESETS[presetIndex];
+    const baseA = basePreset.a + (rng() - 0.5) * 0.04;
+    const baseB = basePreset.b + (rng() - 0.5) * 0.04;
+    const baseC = basePreset.c + (rng() - 0.5) * 0.04;
+    const baseD = basePreset.d + (rng() - 0.5) * 0.04;
+    const baseZoom = basePreset.zoom;
+
+    const NUM_PARTICLES = 360000;
+    const initPositions = new Float32Array(NUM_PARTICLES * 4);
+    for (let i = 0; i < NUM_PARTICLES; i++) {
+      const band = Math.floor((i / NUM_PARTICLES) * 3);
+      initPositions[i * 4 + 0] = (rng() - 0.5) * 3.2;
+      initPositions[i * 4 + 1] = (rng() - 0.5) * 3.2;
+      initPositions[i * 4 + 2] = 0.5; // velocity
+      initPositions[i * 4 + 3] = band; // band index (0.0, 1.0, 2.0)
+    }
+
+    const vbo = [gl.createBuffer(), gl.createBuffer()];
+    const vao = [gl.createVertexArray(), gl.createVertexArray()];
+
+    for (let i = 0; i < 2; i++) {
+      gl.bindVertexArray(vao[i]);
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo[i]);
+      gl.bufferData(gl.ARRAY_BUFFER, initPositions, gl.DYNAMIC_COPY);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0);
+    }
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    const emptyVao = gl.createVertexArray();
+
+    let accumTextures = [null, null];
+    let accumFBOs = [null, null];
+    let accumIdx = 0;
+
+    function createTexture(width, height, internalFormat, format, type) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return tex;
+    }
+
+    function recreateAccumulationBuffers(w, h) {
+      for (let i = 0; i < 2; i++) {
+        if (accumTextures[i]) gl.deleteTexture(accumTextures[i]);
+        if (accumFBOs[i]) gl.deleteFramebuffer(accumFBOs[i]);
+      }
+
+      const extFloat = gl.getExtension('EXT_color_buffer_float');
+      let internalFormat = extFloat ? gl.RGBA16F : gl.RGBA8;
+      let format = gl.RGBA;
+      let type = extFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+
+      for (let i = 0; i < 2; i++) {
+        let tex = createTexture(w, h, internalFormat, format, type);
+        let fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+
+        let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        if (status !== gl.FRAMEBUFFER_COMPLETE && internalFormat !== gl.RGBA8) {
+          gl.deleteTexture(tex);
+          gl.deleteFramebuffer(fbo);
+          internalFormat = gl.RGBA8;
+          type = gl.UNSIGNED_BYTE;
+          tex = createTexture(w, h, internalFormat, format, type);
+          fbo = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        }
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        accumTextures[i] = tex;
+        accumFBOs[i] = fbo;
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      accumIdx = 0;
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(320, Math.floor(window.innerWidth * dpr));
+      const h = Math.max(240, Math.floor(window.innerHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        recreateAccumulationBuffers(w, h);
+      }
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    let tfRead = 0;
+    let tfWrite = 1;
+
+    const bandParamsBuffer = new Float32Array(12);
+
+    function computeBandParameters(simTime, dispersion) {
+      const T = 44.0;
+      const Omega = (Math.PI * 2.0) / T;
+      const s = 0.20;
+
+      for (let k = 0; k < 3; k++) {
+        // Phase shift each spectral band symmetrically
+        const bandPhase = (k - 1.0) * 0.48 * dispersion;
+        const tK = simTime * Omega + bandPhase;
+
+        // Slight parameter divergence across spectral bands
+        const dcA = (k - 1.0) * 0.022 * dispersion;
+        const dcB = -(k - 1.0) * 0.018 * dispersion;
+        const dcC = (k - 1.0) * 0.015 * dispersion;
+        const dcD = -(k - 1.0) * 0.020 * dispersion;
+
+        const aK = baseA + dcA + s * (Math.sin(1.0 * tK) * 0.72 + Math.cos(2.0 * tK) * 0.28);
+        const bK = baseB + dcB + s * (Math.cos(1.0 * tK + 0.65) * 0.70 + Math.sin(3.0 * tK) * 0.30);
+        const cK = baseC + dcC + s * (Math.sin(2.0 * tK + 1.25) * 0.65 + Math.cos(1.0 * tK) * 0.35);
+        const dK = baseD + dcD + s * (Math.cos(2.0 * tK + 2.05) * 0.65 + Math.sin(1.0 * tK) * 0.35);
+
+        bandParamsBuffer[k * 4 + 0] = aK;
+        bandParamsBuffer[k * 4 + 1] = bK;
+        bandParamsBuffer[k * 4 + 2] = cK;
+        bandParamsBuffer[k * 4 + 3] = dK;
+      }
+      return bandParamsBuffer;
+    }
+
+    // Warm up the particle trajectories onto attractor manifolds
+    computeBandParameters(0.0, 1.25);
+    gl.useProgram(updateProgram);
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.uniform4fv(u_update_bandParams, bandParamsBuffer);
+
+    for (let w = 0; w < 44; w++) {
+      gl.bindVertexArray(vao[tfRead]);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, vbo[tfWrite]);
+
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, 0, NUM_PARTICLES);
+      gl.endTransformFeedback();
+
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+      tfRead = 1 - tfRead;
+      tfWrite = 1 - tfWrite;
+    }
+    gl.disable(gl.RASTERIZER_DISCARD);
+    gl.bindVertexArray(null);
+
+    // Pre-populate accumulation buffer to prevent blank start frame
+    for (let p = 0; p < 18; p++) {
+      gl.useProgram(updateProgram);
+      gl.enable(gl.RASTERIZER_DISCARD);
+      gl.uniform4fv(u_update_bandParams, bandParamsBuffer);
+
+      gl.bindVertexArray(vao[tfRead]);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, vbo[tfWrite]);
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, 0, NUM_PARTICLES);
+      gl.endTransformFeedback();
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+      tfRead = 1 - tfRead;
+      tfWrite = 1 - tfWrite;
+      gl.disable(gl.RASTERIZER_DISCARD);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accumFBOs[0]);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+
+      gl.useProgram(splatProgram);
+      gl.uniform2f(u_splat_res, canvas.width, canvas.height);
+      gl.uniform1f(u_splat_zoom, baseZoom);
+      gl.uniform1f(u_splat_rot, 0.0);
+      gl.uniform2f(u_splat_pan, 0.0, 0.0);
+      gl.uniform1f(u_splat_depth, 1.6);
+
+      gl.bindVertexArray(vao[tfRead]);
+      gl.drawArrays(gl.POINTS, 0, NUM_PARTICLES);
+      gl.disable(gl.BLEND);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    let isDragging = false;
+    let lastMouseX = 0, lastMouseY = 0;
+    let panX = 0.0, panY = 0.0;
+
+    window.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('#overlay')) return;
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      panX += dx * 0.0022;
+      panY -= dy * 0.0022;
+    });
+
+    window.addEventListener('pointerup', () => { isDragging = false; });
+    window.addEventListener('pointercancel', () => { isDragging = false; });
+
+    let lastTime = performance.now();
+    let simTime = 0.0;
+
+    function render(now) {
+      window.__frames++;
+
+      const dt = Math.min((now - lastTime) * 0.001, 0.05);
+      lastTime = now;
+
+      const dispersion = parseFloat(dispSlider.value);
+      const driftSpeed = parseFloat(driftSlider.value);
+      const depthField = parseFloat(depthSlider.value);
+
+      simTime += dt * driftSpeed;
+
+      // Subtle dynamic camera drift and breathing
+      const autoPanX = panX + 0.06 * Math.sin(simTime * 0.14);
+      const autoPanY = panY + 0.04 * Math.cos(simTime * 0.11);
+      const curRot = simTime * 0.022;
+      const curZoom = baseZoom * (1.0 + 0.05 * Math.sin(simTime * 0.08));
+
+      const bandParams = computeBandParameters(simTime, dispersion);
+
+      // 1. Step particle states via transform feedback
+      gl.useProgram(updateProgram);
+      gl.enable(gl.RASTERIZER_DISCARD);
+      gl.uniform4fv(u_update_bandParams, bandParams);
+
+      gl.bindVertexArray(vao[tfRead]);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, vbo[tfWrite]);
+
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, 0, NUM_PARTICLES);
+      gl.endTransformFeedback();
+
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+      gl.disable(gl.RASTERIZER_DISCARD);
+
+      tfRead = 1 - tfRead;
+      tfWrite = 1 - tfWrite;
+
+      const prevAccumIdx = accumIdx;
+      const currAccumIdx = 1 - accumIdx;
+
+      // 2. Exponential persistence fade on previous accumulation buffer
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accumFBOs[currAccumIdx]);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.disable(gl.BLEND);
+
+      gl.useProgram(fadeProgram);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, accumTextures[prevAccumIdx]);
+      gl.uniform1i(u_fade_tex, 0);
+      gl.uniform1f(u_fade_persist, 0.935);
+
+      gl.bindVertexArray(emptyVao);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // 3. Splat chromatic depth particles into current accumulation buffer
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+
+      gl.useProgram(splatProgram);
+      gl.uniform2f(u_splat_res, canvas.width, canvas.height);
+      gl.uniform1f(u_splat_zoom, curZoom);
+      gl.uniform1f(u_splat_rot, curRot);
+      gl.uniform2f(u_splat_pan, autoPanX, autoPanY);
+      gl.uniform1f(u_splat_depth, depthField);
+
+      gl.bindVertexArray(vao[tfRead]);
+      gl.drawArrays(gl.POINTS, 0, NUM_PARTICLES);
+      gl.disable(gl.BLEND);
+
+      accumIdx = currAccumIdx;
+
+      // 4. Logarithmic tone mapping and chromatic depth composite to screen
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+
+      gl.useProgram(compositeProgram);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, accumTextures[currAccumIdx]);
+      gl.uniform1i(u_comp_tex, 0);
+
+      gl.bindVertexArray(emptyVao);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

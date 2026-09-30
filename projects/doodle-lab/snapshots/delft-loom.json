@@ -1,0 +1,14 @@
+{
+ "title": "Delft Loom",
+ "blurb": "Sevenfold Delft arcs flipping through a radial Chrono Loom, so the rim lags the centre.",
+ "chain": "Multigrid Zellige → Chrono Loom",
+ "tags": [
+  "synth snapshot",
+  "multigrid"
+ ],
+ "controls": "Knobs: Age span, RGB age spread, Phason orbit, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#delft-loom"
+}

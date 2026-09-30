@@ -1,0 +1,15 @@
+{
+ "title": "Micro Industrial Sheet",
+ "blurb": "A living machine spec sheet: a rotating schematic, telemetry panes, barcodes, hazard stripes and micro-text annotations. From the Micro Industrial style.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "technical",
+  "style study"
+ ],
+ "controls": "Sliders: Detail Density, Animation Rate, Grid Subdivision · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/038-style-micro-industrial/index.html"
+}

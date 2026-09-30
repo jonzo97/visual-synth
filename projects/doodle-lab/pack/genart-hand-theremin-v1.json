@@ -1,0 +1,12 @@
+{
+ "title": "Hand Theremin",
+ "blurb": "Your hands steer a glowing feedback tunnel: spread zooms, tilt twists, pinches freeze and change shape.",
+ "tags": [
+  "interactive",
+  "camera"
+ ],
+ "controls": "Open full screen to use the camera for hand tracking (the preview has no camera); M switches to mouse mode, P shows landmarks, H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "WebGL2 feedback + MediaPipe hand tracking"
+}

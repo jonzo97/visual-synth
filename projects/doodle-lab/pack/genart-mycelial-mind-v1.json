@@ -1,0 +1,12 @@
+{
+ "title": "Mycelial Mind",
+ "blurb": "A fungal network grows, fuses, reinforces useful paths and fires like neurons under UV light.",
+ "tags": [
+  "simulation",
+  "network"
+ ],
+ "controls": "Feed, Poke and Poison tools; H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "Canvas 2D growth + integrate-and-fire"
+}

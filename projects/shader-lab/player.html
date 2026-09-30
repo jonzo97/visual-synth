@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Visual Synth Player</title>
+<meta name="description" content="Play Visual Synth snapshots with four macro knobs, a morph wheel and MIDI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%23ff8a3d%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./player.css">
+</head>
+<body>
+<main class="player">
+  <div class="stage">
+    <canvas id="screen" aria-label="Live visual synthesizer output"></canvas>
+    <p class="status" id="status" role="status"></p>
+  </div>
+  <header class="topbar" data-ui>
+    <a class="back" href="/projects/shader-lab/" title="Full modular editor">Visual Synth</a>
+    <button class="step" id="prev" aria-label="Previous snapshot">‹</button>
+    <div class="title" id="title-picker" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-controls="drawer" title="Open instrument list (L)">
+      <p class="bank" id="bank"></p>
+      <h1 id="name"></h1>
+    </div>
+    <button class="step" id="next" aria-label="Next snapshot">›</button>
+    <button class="chip" id="browse" aria-expanded="false" aria-controls="drawer">All snapshots</button>
+  </header>
+  <section class="rack" data-ui aria-label="Macro controls">
+    <p class="desc" id="desc"></p>
+    <p class="hint" id="hint"></p>
+    <div class="knobs" id="knobs"></div>
+    <div class="side">
+      <label class="pal">Palette <select id="palette"></select></label>
+      <div class="row">
+        <button id="mutate" title="Roll a new target for the Morph wheel">Mutate</button>
+        <button id="randomize" title="Randomize knobs and Morph">Randomize</button>
+      </div>
+      <div class="row">
+        <button id="undo" disabled title="Undo the last Randomize">Undo</button>
+        <button id="play" aria-pressed="true">Pause</button>
+      </div>
+      <div class="row">
+        <button id="midi" aria-pressed="false" title="Knobs and Morph follow your controller's profile (Launch Control / XL, Launchkey, Launchpad, MIDI Fighter 3D; otherwise CC 21–23 and the mod wheel). Click a knob label to learn another control.">MIDI</button>
+        <button id="frame" aria-pressed="false" title="Preview a centered 9:16 phone frame. Shortcut: V">9:16 frame</button>
+      </div>
+      <div class="export-wrap">
+        <button id="export" aria-expanded="false" aria-controls="export-menu">Export clip</button>
+        <div class="export-menu" id="export-menu" hidden></div>
+      </div>
+      <a class="edit" id="edit" href="#">Open in full editor ↗</a>
+      <p class="notes" id="notes" hidden>Pads, in order: ‹ › · Mutate · Pause · Morph 0 / ⅓ / ⅔ / 1 · Palette −/+ · Randomize (MIDI Fighter tilt also drives Morph)</p>
+    </div>
+  </section>
+  <aside class="drawer" id="drawer" hidden aria-label="Snapshots"></aside>
+</main>
+<script type="module" src="./player.ts"></script>
+</body>
+</html>

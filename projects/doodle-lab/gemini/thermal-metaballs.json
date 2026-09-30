@@ -1,0 +1,15 @@
+{
+ "title": "Thermal Metaballs",
+ "blurb": "Drifting heat sources seen through a thermal camera: iron palette, isotherm contour lines and a temperature legend. From the Heat Map style.",
+ "tags": [
+  "gemini",
+  "generator",
+  "heat map",
+  "style study"
+ ],
+ "controls": "Sliders: Source Count, Diffusion Radius, Isotherm Density · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/024-style-heat-map/index.html"
+}

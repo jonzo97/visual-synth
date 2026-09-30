@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lenia Creatures</title>
+<script src="../tools/lab-shim.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Lenia Creatures: Bert Chan's continuous cellular automaton (Chan 2019,
+  "Lenia: Biology of Artificial Life"), run on the GPU.
+    U = K * A                               (convolution with a ring kernel)
+    A <- clip(A + dt * G(U), 0, 1)
+    G(u) = 2 exp(-(u - mu)^2 / (2 sigma^2)) - 1
+    K(r) = b[floor(B r)] * exp(4 - 1 / (q (1 - q))), q = frac(B r), r = |x| / R < 1
+  Kernel normalised to sum 1. Species parameters from Chan's published set:
+    Orbium          R=13 T=10 mu=0.15 sigma=0.015 b=[1]      (cells from the Lenia notebook)
+    Hydrogeminium   R=18 T=10 mu=0.26 sigma=0.036 b=[1/2,1,2/3]
+  "Two-ring tissue" (R=15 mu=0.20 sigma=0.025 b=[1/2,1]) is our own exploratory
+  rule, not a catalogued species: it grows a writhing cell-like sheet from noise.
+  Noise seeds are uniform random discs of radius 1.2 R. dt = 1/T.
+*/
+:root {
+  --panel-bg: rgba(12, 10, 26, 0.8);
+  --panel-fg: #eef0ff;
+  --panel-muted: #a9abcf;
+  --accent: #7df3ff;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(12, 10, 26, 0.8); } }
+:root[data-theme="dark"] { --panel-bg: rgba(12, 10, 26, 0.8); }
+html, body { height: 100%; margin: 0; }
+body { background: #05030c; overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.panel {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 70px); overflow: auto;
+  background: var(--panel-bg); color: var(--panel-fg);
+  border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4; z-index: 5;
+}
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary .count { font-weight: 400; color: var(--panel-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.body { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 78px 1fr 46px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label.sel { grid-template-columns: 78px 1fr; }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+select { min-width: 0; width: 100%; font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 4px 6px; }
+select option { background: #16132a; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+button {
+  font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+button.on { background: rgba(200, 30, 60, 0.85); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+.err { color: #ffb4b4; background: rgba(120, 0, 0, 0.35); border-radius: 6px; padding: 8px; white-space: pre-wrap; font: 11px/1.35 ui-monospace, monospace; margin: 0; }
+body.noui .panel { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" id="panel" open>
+  <summary><span>Lenia</span><span class="count" id="count"></span></summary>
+  <div class="body">
+    <label class="sel">Species
+      <select id="species">
+        <option value="orbium" selected>Orbium (glider)</option>
+        <option value="hydro">Hydrogeminium (colony)</option>
+        <option value="tissue">Two-ring tissue</option>
+      </select>
+    </label>
+    <label>Growth mu <input type="range" id="mu" min="0.05" max="0.40" step="0.001"><output id="muo"></output></label>
+    <label>Width sigma <input type="range" id="sigma" min="0.004" max="0.07" step="0.0005"><output id="sigmao"></output></label>
+    <label>Time step <input type="range" id="dt" min="0.02" max="0.3" step="0.005"><output id="dto"></output></label>
+    <label>Speed <input type="range" id="speed" min="1" max="6" step="1" value="2"><output id="speedo"></output></label>
+    <label>Trails <input type="range" id="trail" min="0" max="1" step="0.01" value="0.7"><output id="trailo"></output></label>
+    <label class="sel" style="grid-template-columns:78px auto;justify-content:start">Balance <input type="checkbox" id="auto" checked></label>
+    <div class="row">
+      <button id="reseed">Reseed</button>
+      <button id="clear">Clear</button>
+      <button id="pause">Pause</button>
+      <button id="rec">Record</button>
+    </div>
+    <div class="hint" id="hint">Click or drag to drop creatures. H hides the UI, R records, Space reseeds.</div>
+    <pre class="err" id="err" hidden></pre>
+  </div>
+</details>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("c"), errBox = $("err");
+  function showError(msg) { errBox.hidden = false; errBox.textContent = msg; $("panel").open = true; console.warn(msg); }
+  const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+  if (!gl) { showError("WebGL2 is not available in this browser."); return; }
+
+  let FMT;
+  if (gl.getExtension("EXT_color_buffer_float")) FMT = { internal: gl.RGBA32F, packed: 0, name: "float32" };
+  else if (gl.getExtension("EXT_color_buffer_half_float")) FMT = { internal: gl.RGBA16F, packed: 0, name: "float16" };
+  else FMT = { internal: gl.RGBA8, packed: 1, name: "packed 8-bit" };
+
+  // Channel layout: x = A (state), y = trail, z = U (potential, for display),
+  // w = colour phase when a body last covered the cell (float formats only).
+  const HEADER = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+#define PACKED ${FMT.packed}
+uniform sampler2D uState; uniform ivec2 uSize;
+float dec16(vec2 c) { return (c.x * 65280.0 + c.y * 255.0) / 65535.0; }
+vec2 enc16(float x) { float v = floor(clamp(x, 0.0, 1.0) * 65535.0 + 0.5); float hi = floor(v / 256.0); return vec2(hi, v - hi * 256.0) / 255.0; }
+vec4 decode(vec4 t) {
+#if PACKED
+  return vec4(dec16(t.rg), t.b, t.a * 0.5, 0.0);
+#else
+  return t;
+#endif
+}
+vec4 encode(vec4 s) {
+#if PACKED
+  return vec4(enc16(s.x), clamp(s.y, 0.0, 1.0), clamp(s.z * 2.0, 0.0, 1.0));
+#else
+  return s;
+#endif
+}
+ivec2 wrap(ivec2 p) { return ivec2(mod(vec2(p), vec2(uSize))); }
+vec4 S(ivec2 p) { return decode(texelFetch(uState, wrap(p), 0)); }
+float growth(float u, float mu, float sigma) { float d = (u - mu) / sigma; return 2.0 * exp(-0.5 * d * d) - 1.0; }
+`;
+  const VERT = `#version 300 es
+in vec2 aPos; void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  // One Lenia step by direct convolution over the kernel's non-zero taps
+  // (tap texture holds dx, dy, weight). Stamps drop seed patterns.
+  const SIM = HEADER + `
+uniform sampler2D uTaps; uniform int uNTaps;
+uniform float uMu, uSigma, uDt, uDecay, uPhase;
+uniform sampler2D uPat; uniform vec2 uPatSize;
+uniform vec4 uStamp[8]; uniform int uNStamp;
+out vec4 o;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 s = S(p);
+  float U = 0.0;
+  for (int i = 0; i < 4096; i++) {
+    if (i >= uNTaps) break;
+    vec4 t = texelFetch(uTaps, ivec2(i, 0), 0);
+    U += t.z * decode(texelFetch(uState, wrap(p + ivec2(t.xy)), 0)).x;
+  }
+  float A = clamp(s.x + uDt * growth(U, uMu, uSigma), 0.0, 1.0);
+  bool stamped = false;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uNStamp) break;
+    vec2 d = gl_FragCoord.xy - uStamp[i].xy;
+    d -= vec2(uSize) * floor(d / vec2(uSize) + 0.5);          // shortest toroidal offset
+    vec2 l = vec2(uStamp[i].z * d.x + uStamp[i].w * d.y, -uStamp[i].w * d.x + uStamp[i].z * d.y) + 0.5 * uPatSize;
+    if (all(greaterThanEqual(l, vec2(0.0))) && all(lessThan(l, uPatSize))) { A = texture(uPat, l / uPatSize).r; stamped = true; }
+  }
+  float trail = stamped ? s.y * uDecay : max(s.y * uDecay, A);   // no square ghost where a seed lands
+  float phase = A > 0.005 ? uPhase : s.w;
+  o = encode(vec4(A, trail, U, phase));
+}`;
+
+  const CLEAR = HEADER + `out vec4 o; void main() { o = encode(vec4(0.0)); }`;
+
+  // Display: iridescent potential halos, growth-tinted glossy bodies, hue-drifting trails.
+  const SHOW = HEADER + `
+uniform vec2 uRes; uniform float uTime, uMu, uSigma, uTrailGain; uniform int uHasPhase;
+out vec4 o;
+vec4 samp(vec2 sp) {
+  sp -= 0.5; vec2 f = fract(sp); ivec2 i = ivec2(floor(sp));
+  return mix(mix(S(i), S(i + ivec2(1, 0)), f.x), mix(S(i + ivec2(0, 1)), S(i + ivec2(1, 1)), f.x), f.y);
+}
+vec3 irid(float t) { return 0.5 + 0.5 * cos(6.2831853 * (t + vec3(0.0, 0.33, 0.67))); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 sp = uv * vec2(uSize);
+  vec4 s = samp(sp);
+  float A = s.x, trail = s.y, U = s.z;
+  float gx = samp(sp + vec2(0.7, 0.0)).x - samp(sp - vec2(0.7, 0.0)).x;
+  float gy = samp(sp + vec2(0.0, 0.7)).x - samp(sp - vec2(0.0, 0.7)).x;
+  float G = growth(U, uMu, uSigma);
+  // Background: deep space with a faint slow colour wash.
+  vec2 cq = uv - 0.5;
+  vec3 col = mix(vec3(0.02, 0.01, 0.05), vec3(0.05, 0.015, 0.09), 0.5 + 0.5 * sin(uTime * 0.1 + cq.x * 3.0 - cq.y * 2.0));
+  // Potential halo: thin-film colours banded by U, brightest where growth is favourable.
+  float halo = smoothstep(0.0, uMu * 0.75, U);
+  vec3 film = irid(U * 9.0 - uTime * 0.07);
+  col += film * halo * (0.55 + 0.8 * max(G, 0.0)) * 1.3;
+  // Trails: fading hue-shifted smear of where bodies have been.
+  float tr = pow(max(trail - A, 0.0), 1.4) * uTrailGain;
+  // Float formats remember when a body passed, so paths become rainbow ribbons.
+  float ph = uHasPhase == 1 ? s.w * 6.0 : 0.6 + trail * 1.6 + uTime * 0.03;
+  col += irid(ph) * tr * 1.5;
+  // Body: hue climbs from rim to core (and with potential), growing edges glow brighter,
+  // glossy shading from the gradient of A.
+  vec3 body = irid(0.55 + A * 0.45 + U * 2.5 + uTime * 0.02);
+  body *= 0.75 + 0.5 * max(G, 0.0);
+  vec3 n = normalize(vec3(-vec2(gx, gy) * 5.0, 1.0));
+  vec3 L = normalize(vec3(-0.4, 0.6, 0.7));
+  float spec = pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), 24.0);
+  float a = smoothstep(0.0, 0.5, A);
+  col = mix(col, body * (0.6 + 0.7 * max(dot(n, L), 0.0)), a * 0.9) + spec * a * 0.7 + body * A * A * 0.5;
+  col = 1.0 - exp(-col * 1.5);                   // soft tone map keeps glows from clipping
+  float luma = dot(col, vec3(0.299, 0.587, 0.114));
+  col = clamp(mix(vec3(luma), col, 1.3), 0.0, 1.0);
+  col *= 1.0 - 0.45 * dot(cq, cq) * 2.0;
+  o = vec4(col, 1.0);
+}`;
+
+  function compile(type, src, name) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(`${name} shader: ${gl.getShaderInfoLog(s)}`);
+    return s;
+  }
+  function program(fs, name) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT, "vertex"));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs, name));
+    gl.bindAttribLocation(p, 0, "aPos"); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(`${name} link: ${gl.getProgramInfoLog(p)}`);
+    const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); u[info.name.replace(/\[0\]$/, "")] = gl.getUniformLocation(p, info.name); }
+    return { p, u };
+  }
+  let simP, clearP, showP;
+  try { simP = program(SIM, "simulation"); clearP = program(CLEAR, "clear"); showP = program(SHOW, "display"); }
+  catch (e) { showError(String(e.message || e)); return; }
+
+  const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  // Orbium bicaudatus cells (20x20) from Chan's Lenia tutorial notebook.
+  const ORBIUM = [[0,0,0,0,0,0,0.1,0.14,0.1,0,0,0.03,0.03,0,0,0.3,0,0,0,0],[0,0,0,0,0,0.08,0.24,0.3,0.3,0.18,0.14,0.15,0.16,0.15,0.09,0.2,0,0,0,0],[0,0,0,0,0,0.15,0.34,0.44,0.46,0.38,0.18,0.14,0.11,0.13,0.19,0.18,0.45,0,0,0],[0,0,0,0,0.06,0.13,0.39,0.5,0.5,0.37,0.06,0,0,0,0.02,0.16,0.68,0,0,0],[0,0,0,0.11,0.17,0.17,0.33,0.4,0.38,0.28,0.14,0,0,0,0,0,0.18,0.42,0,0],[0,0,0.09,0.18,0.13,0.06,0.08,0.26,0.32,0.32,0.27,0,0,0,0,0,0,0.82,0,0],[0.27,0,0.16,0.12,0,0,0,0.25,0.38,0.44,0.45,0.34,0,0,0,0,0,0.22,0.17,0],[0,0.07,0.2,0.02,0,0,0,0.31,0.48,0.57,0.6,0.57,0,0,0,0,0,0,0.49,0],[0,0.59,0.19,0,0,0,0,0.2,0.57,0.69,0.76,0.76,0.49,0,0,0,0,0,0.36,0],[0,0.58,0.19,0,0,0,0,0,0.67,0.83,0.9,0.92,0.87,0.12,0,0,0,0,0.22,0.07],[0,0,0.46,0,0,0,0,0,0.7,0.93,1,1,1,0.61,0,0,0,0,0.18,0.11],[0,0,0.82,0,0,0,0,0,0.47,1,1,0.98,1,0.96,0.27,0,0,0,0.19,0.1],[0,0,0.46,0,0,0,0,0,0.25,1,1,0.84,0.92,0.97,0.54,0.14,0.04,0.1,0.21,0.05],[0,0,0,0.4,0,0,0,0,0.09,0.8,1,0.82,0.8,0.85,0.63,0.31,0.18,0.19,0.2,0.01],[0,0,0,0.36,0.1,0,0,0,0.05,0.54,0.86,0.79,0.74,0.72,0.6,0.39,0.28,0.24,0.13,0],[0,0,0,0.01,0.3,0.07,0,0,0.08,0.36,0.64,0.7,0.64,0.6,0.51,0.39,0.29,0.19,0.04,0],[0,0,0,0,0.1,0.24,0.14,0.1,0.15,0.29,0.45,0.53,0.52,0.46,0.4,0.31,0.21,0.08,0,0],[0,0,0,0,0,0.08,0.21,0.21,0.22,0.29,0.36,0.39,0.37,0.33,0.26,0.18,0.09,0,0,0],[0,0,0,0,0,0,0.03,0.13,0.19,0.22,0.24,0.24,0.23,0.18,0.13,0.05,0,0,0,0],[0,0,0,0,0,0,0,0,0.02,0.06,0.08,0.09,0.07,0.05,0.01,0,0,0,0,0]];
+  const SPECIES = {
+    orbium: { R: 13, T: 10, mu: 0.15, sigma: 0.015, b: [1], seed: "orbium", count: 6 },
+    hydro:  { R: 18, T: 10, mu: 0.26, sigma: 0.036, b: [1 / 2, 1, 2 / 3], seed: "noise", count: 6, amp: 1 },
+    tissue: { R: 15, T: 10, mu: 0.20, sigma: 0.025, b: [1 / 2, 1], seed: "noise", count: 6, amp: 1 },
+  };
+
+  function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  let seed = (Math.random() * 1e9) | 0, rng = mulberry32(seed);
+
+  // ---- Kernel taps and seed pattern textures ----
+  const tapTex = gl.createTexture(), patTex = gl.createTexture();
+  let nTaps = 0, patSize = [20, 20];
+  function buildKernel(sp) {
+    const core = (q) => (q > 0 && q < 1 ? Math.exp(4 - 1 / (q * (1 - q))) : 0);
+    const taps = []; let sum = 0; const B = sp.b.length;
+    for (let dy = -sp.R; dy <= sp.R; dy++) for (let dx = -sp.R; dx <= sp.R; dx++) {
+      const r = Math.hypot(dx, dy) / sp.R; if (r >= 1) continue;
+      const Br = B * r, i = Math.min(Math.floor(Br), B - 1), w = sp.b[i] * core(Br - i);
+      if (w < 1e-7) continue; taps.push(dx, dy, w, 0); sum += w;
+    }
+    for (let i = 2; i < taps.length; i += 4) taps[i] /= sum;
+    nTaps = taps.length / 4;
+    gl.bindTexture(gl.TEXTURE_2D, tapTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, nTaps, 1, 0, gl.RGBA, gl.FLOAT, new Float32Array(taps));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  }
+  function buildPattern(sp) {
+    let w, h, data;
+    if (sp.seed === "orbium") {
+      w = 20; h = 20; data = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data[y * w + x] = Math.round(ORBIUM[y][x] * 255);
+    } else {
+      // Random disc of radius 1.2 R (Chan's usual soup initialisation).
+      const r = Math.round(sp.R * 1.2); w = h = 2 * r + 2; data = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const d = Math.hypot(x - w / 2 + 0.5, y - h / 2 + 0.5); if (d < r) data[y * w + x] = Math.round(rng() * sp.amp * 255);
+      }
+    }
+    patSize = [w, h];
+    gl.bindTexture(gl.TEXTURE_2D, patTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  // ---- Parameters ----
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) $("speed").value = 1;
+  let sp = SPECIES.orbium;
+  const P = {};
+  function readParams() {
+    P.mu = +$("mu").value; P.sigma = +$("sigma").value; P.dt = +$("dt").value;
+    P.speed = +$("speed").value; P.trail = +$("trail").value;
+    $("muo").textContent = P.mu.toFixed(3); $("sigmao").textContent = P.sigma.toFixed(4);
+    $("dto").textContent = P.dt.toFixed(3); $("speedo").textContent = P.speed; $("trailo").textContent = P.trail.toFixed(2);
+  }
+  function setSpecies(name) {
+    sp = SPECIES[name];
+    $("mu").value = sp.mu; $("sigma").value = sp.sigma; $("dt").value = 1 / sp.T;
+    readParams(); buildKernel(sp); reseed(true);
+  }
+  ["mu", "sigma", "dt", "speed", "trail"].forEach((id) => $(id).addEventListener("input", readParams));
+  $("species").addEventListener("change", () => setSpecies($("species").value));
+
+  // ---- State textures ----
+  let W = 0, H = 0, tex = [], fbo = [], cur = 0;
+  function makeTex() {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, FMT.internal, W, H);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    return t;
+  }
+  function resize(first) {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
+    // About 5 CSS px per cell; cap at ~50k cells so the direct convolution stays at 60 fps.
+    const scale = Math.max(5, Math.sqrt((innerWidth * innerHeight) / 50000));
+    const nW = Math.ceil(innerWidth / scale), nH = Math.ceil(innerHeight / scale);
+    if (nW === W && nH === H && !first) return;
+    tex.forEach((t) => gl.deleteTexture(t)); fbo.forEach((f) => gl.deleteFramebuffer(f));
+    W = nW; H = nH; tex = [makeTex(), makeTex()];
+    fbo = tex.map((t) => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return f; });
+    const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (st !== gl.FRAMEBUFFER_COMPLETE) showError(`Framebuffer incomplete (${FMT.name}): 0x${st.toString(16)}`);
+    if (!first) reseed(false);
+  }
+
+  const stamps = [];
+  function clearField() {
+    gl.useProgram(clearP.p); gl.viewport(0, 0, W, H);
+    for (let k = 0; k < 2; k++) { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[k]); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    cur = 0;
+  }
+  function reseed(newSeed = true) {
+    if (newSeed) seed = (rng() * 1e9) | 0;
+    rng = mulberry32(seed);
+    buildPattern(sp); clearField(); stamps.length = 0;
+    // Spread seeds on a jittered grid so creatures do not start overlapping.
+    const n = sp.count, cols = Math.ceil(Math.sqrt(n * W / H)), rows = Math.ceil(n / cols);
+    const cells = []; for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) cells.push([i, j]);
+    for (let k = cells.length - 1; k > 0; k--) { const m = (rng() * (k + 1)) | 0; [cells[k], cells[m]] = [cells[m], cells[k]]; }
+    // Gliders start as a loose school (shared heading +-0.5 rad): head-on collisions
+    // tend to explode into a space-filling labyrinth, so the school keeps them apart.
+    const heading = rng() * Math.PI * 2;
+    for (let k = 0; k < n; k++) {
+      const [i, j] = cells[k];
+      stamps.push([(i + 0.3 + rng() * 0.4) * W / cols, (j + 0.3 + rng() * 0.4) * H / rows, heading + (rng() - 0.5)]);
+    }
+    $("hint").textContent = `Seed ${seed}. Click or drag to drop creatures. H hides the UI, R records, Space reseeds.`;
+  }
+
+  // ---- Pointer: drop the current species' seed pattern ----
+  let lastDrop = null;
+  const toCell = (e) => [(e.clientX / innerWidth) * W, (1 - e.clientY / innerHeight) * H];
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const c = toCell(e); if (sp.seed === "noise") buildPattern(sp);
+    stamps.push([c[0], c[1], rng() * Math.PI * 2]); lastDrop = [e.clientX, e.clientY];
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!lastDrop || !e.buttons) return;
+    const dx = e.clientX - lastDrop[0], dy = e.clientY - lastDrop[1];
+    if (Math.hypot(dx, dy) < 26 * (innerWidth / W) / 1.6) return;
+    const c = toCell(e);
+    // Point the glider along the drag (Orbium moves roughly along its pattern's -y axis).
+    stamps.push([c[0], c[1], Math.atan2(-dy, dx) + Math.PI / 2 + (rng() - 0.5) * 0.3]); lastDrop = [e.clientX, e.clientY];
+  });
+  const up = () => { lastDrop = null; };
+  canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
+
+  // ---- Population read-back: keeps a few gliders alive and recovers from blow-ups ----
+  let frameNo = 0, status = "", explodedSince = 0;
+  const ORBIUM_MASS = 71;                       // measured total A of one Orbium
+  function totalMass() {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[cur]);
+    let m = 0;
+    if (FMT.packed) {
+      const px = new Uint8Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      for (let i = 0; i < px.length; i += 4) m += (px[i] * 256 + px[i + 1]) / 65535;
+    } else {
+      const px = new Float32Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, px);
+      for (let i = 0; i < px.length; i += 4) m += px[i];
+    }
+    return m;
+  }
+  function balance() {
+    const m = totalMass(), cover = m / (W * H);
+    if (sp.seed === "orbium") {
+      const n = Math.round(m / ORBIUM_MASS);
+      status = cover > 0.08 ? "overgrown · " : `≈${n} orbia · `;
+    } else status = `cover ${(cover * 100).toFixed(0)}% · `;
+    if (!$("auto").checked || !running) return;
+    if (sp.seed === "orbium" && m < ORBIUM_MASS * 3.5 && stamps.length === 0) {
+      stamps.push([rng() * W, rng() * H, rng() * Math.PI * 2]);
+    }
+    if (m < 5 && stamps.length === 0) reseed(true);
+    // A collision can explode into a space-filling labyrinth; admire it briefly, then restart.
+    if (sp.seed === "orbium" && cover > 0.08) { explodedSince = explodedSince || clock; if (clock - explodedSince > 6) { explodedSince = 0; reseed(true); } }
+    else explodedSince = 0;
+  }
+
+  // ---- Frame loop ----
+  let running = true, last = performance.now(), clock = 0, fpsAcc = 0, fpsN = 0, fps = 0;
+  const stampArr = new Float32Array(32);
+  function frame(now) {
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; clock += dt;
+    fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    const pending = stamps.length > 0;
+    if (running || pending) {
+      gl.useProgram(simP.p); gl.viewport(0, 0, W, H);
+      gl.uniform2i(simP.u.uSize, W, H);
+      gl.uniform1i(simP.u.uState, 0); gl.uniform1i(simP.u.uTaps, 1); gl.uniform1i(simP.u.uPat, 2);
+      gl.uniform1i(simP.u.uNTaps, nTaps);
+      gl.uniform1f(simP.u.uMu, P.mu); gl.uniform1f(simP.u.uSigma, P.sigma);
+      gl.uniform1f(simP.u.uDecay, 1 - 0.05 * Math.pow(1 - P.trail * 0.98, 2));
+      gl.uniform1f(simP.u.uPhase, (clock * 0.05) % 1);
+      gl.uniform2f(simP.u.uPatSize, patSize[0], patSize[1]);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tapTex);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, patTex);
+      gl.activeTexture(gl.TEXTURE0);
+      const batch = stamps.splice(0, 8);
+      stampArr.fill(0);
+      batch.forEach((s, i) => stampArr.set([s[0], s[1], Math.cos(s[2]), Math.sin(s[2])], i * 4));
+      gl.uniform4fv(simP.u.uStamp, stampArr);
+      const n = running ? P.speed : 1;
+      for (let i = 0; i < n; i++) {
+        gl.uniform1i(simP.u.uNStamp, i === 0 ? batch.length : 0);
+        // A paused step only applies stamps (dt = 0) so drops still appear.
+        gl.uniform1f(simP.u.uDt, running ? P.dt : 0);
+        gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1 - cur]);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        cur = 1 - cur;
+      }
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.useProgram(showP.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+    gl.uniform1i(showP.u.uState, 0); gl.uniform2i(showP.u.uSize, W, H);
+    gl.uniform2f(showP.u.uRes, canvas.width, canvas.height); gl.uniform1f(showP.u.uTime, reduced ? clock * 0.3 : clock);
+    gl.uniform1f(showP.u.uMu, P.mu); gl.uniform1f(showP.u.uSigma, P.sigma); gl.uniform1f(showP.u.uTrailGain, Math.min(1, P.trail * 1.4)); gl.uniform1i(showP.u.uHasPhase, FMT.packed ? 0 : 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (++frameNo % 90 === 0) balance();
+    $("count").textContent = `${status}${fps} fps`;
+    requestAnimationFrame(frame);
+  }
+
+  // ---- UI ----
+  $("reseed").onclick = () => reseed(true);
+  $("clear").onclick = () => { clearField(); stamps.length = 0; };
+  const setPause = (v) => { running = v; $("pause").textContent = running ? "Pause" : "Resume"; };
+  $("pause").onclick = () => setPause(!running);
+  addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input,select,textarea")) return;
+    if (e.key === "h" || e.key === "H") document.body.classList.toggle("noui");
+    else if (e.key === "r" || e.key === "R") toggleRecord();
+    else if (e.code === "Space") { e.preventDefault(); reseed(true); }
+  });
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => resize(false), 150); });
+  canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); showError("WebGL context lost. Reload the page to restart."); });
+
+  // ---- Recorder (canvas only; saved through the lab's downloads shim) ----
+  let rec = null, chunks = [], recTimer = null;
+  async function toggleRecord() {
+    if (rec && rec.state === "recording") { rec.stop(); return; }
+    if (!canvas.captureStream || !window.MediaRecorder) { showError("Recording is not supported in this browser."); return; }
+    const mime = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+    if (!mime) { showError("No supported video format for recording."); return; }
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 16e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearTimeout(recTimer); $("rec").classList.remove("on"); $("rec").textContent = "Saving...";
+      const blob = new Blob(chunks, { type: mime }), ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      try { const d = await window.claude.use("downloads"); await d.save({ filename: `sim-lenia-orbium-${stamp}.${ext}`, data: blob }); $("rec").textContent = "Saved"; }
+      catch (err) { $("rec").textContent = "Save failed"; }
+      setTimeout(() => { $("rec").textContent = "Record"; }, 2000);
+    };
+    rec.start(250); $("rec").classList.add("on"); $("rec").textContent = "Stop";
+    recTimer = setTimeout(() => rec.state === "recording" && rec.stop(), 30000);
+  }
+  $("rec").onclick = toggleRecord;
+
+  // Small console hook for testing: drop(x, y, angle), clear(), mass().
+  window.lenia = {
+    drop: (x, y, a = 0) => stamps.push([x, y, a]), clear: () => { clearField(); stamps.length = 0; },
+    mass: () => { if (FMT.packed) return NaN; const px = new Float32Array(W * H * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[cur]); gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, px); let m = 0; for (let i = 0; i < px.length; i += 4) m += px[i]; return m; },
+    setSpeed: (n) => { $("speed").value = n; readParams(); }, pause: setPause,
+    custom: (def) => { sp = Object.assign({ T: 10, b: [1], seed: "noise", count: 8, amp: 1 }, def); $("mu").value = sp.mu; $("sigma").value = sp.sigma; $("dt").value = 1 / sp.T; readParams(); buildKernel(sp); reseed(true); },
+  };
+  resize(true);
+  const want = new URLSearchParams(location.search).get("species");
+  if (want && SPECIES[want]) $("species").value = want;
+  setSpecies($("species").value);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

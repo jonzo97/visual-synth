@@ -1,0 +1,15 @@
+{
+ "title": "Rose Window",
+ "blurb": "Voronoi stained glass arranged as a gothic rose window: lead lines breathe, and backlight sweeps coloured caustics across the tracery.",
+ "tags": [
+  "gemini",
+  "generator",
+  "voronoi",
+  "glass"
+ ],
+ "controls": "Sliders: Sun Angle, Caustic Intensity, Armature Gauge · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/009-stained-voronoi-v2/index.html"
+}

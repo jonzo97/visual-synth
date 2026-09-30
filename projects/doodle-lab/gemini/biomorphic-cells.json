@@ -1,0 +1,15 @@
+{
+ "title": "Biomorphic Cells",
+ "blurb": "A raymarched cluster of breathing, budding cells with pores and a warm subsurface glow. From the Biomorphism style.",
+ "tags": [
+  "gemini",
+  "generator",
+  "raymarching",
+  "style study"
+ ],
+ "controls": "Sliders: Budding Blend, Cage Porosity, Radiance & SSS · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/025-style-biomorphism-v2/index.html"
+}

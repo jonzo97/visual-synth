@@ -1,0 +1,15 @@
+{
+ "title": "Tesseract in the Disk",
+ "blurb": "A 24-cell cut through a hyperbolic tiling by difference blend, then a softened Crushed Reverie (crush 0.40).",
+ "chain": "4D Polytope + Hyperbolic Tiling → Four-channel Mixer → Impulse reverb → Color crush → Impulse reverb · LFO → Channel B",
+ "tags": [
+  "synth snapshot",
+  "polytope",
+  "hyperbolic"
+ ],
+ "controls": "Knobs: Tiling level, 4D tilt, Color crush, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#tesseract-in-the-disk"
+}

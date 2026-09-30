@@ -1,0 +1,15 @@
+{
+ "title": "Isometric Dusk City",
+ "blurb": "A tiny generated isometric city at dusk: noise-built skyline blocks, lit windows and slow traffic along the grid streets.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "city",
+  "isometric"
+ ],
+ "controls": "Sliders: Transit Flow, Tower Scale, Holo & Neon Glow · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/019-isometric-city-v2/index.html"
+}

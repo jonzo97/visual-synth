@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apollonian Gasket Zoom Loop v2</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #030509;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #overlay {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: rgba(8, 12, 22, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(220, 180, 70, 0.28);
+      border-radius: 10px;
+      padding: 14px 18px;
+      color: #f1f5f9;
+      width: 265px;
+      user-select: none;
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.65), inset 0 0 1px rgba(255, 235, 150, 0.25);
+      z-index: 10;
+    }
+    #overlay h1 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #e5c158;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-shadow: 0 0 12px rgba(229, 193, 88, 0.4);
+    }
+    #overlay .hint {
+      font-size: 10px;
+      font-weight: 400;
+      color: #94a3b8;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .control-group {
+      margin-bottom: 11px;
+    }
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #cbd5e1;
+      margin-bottom: 4px;
+    }
+    .control-value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #fde68a;
+      font-weight: 500;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: #1e293b;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #e5c158;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(229, 193, 88, 0.7);
+      transition: transform 0.1s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #e5c158;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 0 10px rgba(229, 193, 88, 0.7);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div id="overlay">
+    <h1>Apollonian Gasket Zoom Loop v2 <span class="hint">['h' hides]</span></h1>
+    <div class="control-group">
+      <div class="control-label">
+        <span>Clockwork Speed</span>
+        <span class="control-value" id="val-speed">1.0</span>
+      </div>
+      <input type="range" id="zoom-speed" min="0.1" max="3" step="0.1" value="1">
+    </div>
+    <div class="control-group">
+      <div class="control-label">
+        <span>Recursion Depth</span>
+        <span class="control-value" id="val-depth">7</span>
+      </div>
+      <input type="range" id="recursion-depth" min="4" max="9" step="1" value="7">
+    </div>
+    <div class="control-group">
+      <div class="control-label">
+        <span>Horological Detail</span>
+        <span class="control-value" id="val-detail">1.5</span>
+      </div>
+      <input type="range" id="horological-detail" min="0.5" max="2.5" step="0.1" value="1.5">
+    </div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    // Seeded PRNG (mulberry32)
+    const urlParams = new URLSearchParams(window.location.search);
+    const seed = parseInt(urlParams.get('seed'), 10) || 1;
+    function mulberry32(a) {
+      return function() {
+        var t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rng = mulberry32(seed);
+
+    // Canvas setup
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    let width = 0, height = 0, dpr = 1;
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // UI Elements
+    const overlay = document.getElementById('overlay');
+    const zoomSpeedInput = document.getElementById('zoom-speed');
+    const recursionDepthInput = document.getElementById('recursion-depth');
+    const horologicalDetailInput = document.getElementById('horological-detail');
+    const valSpeed = document.getElementById('val-speed');
+    const valDepth = document.getElementById('val-depth');
+    const valDetail = document.getElementById('val-detail');
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    zoomSpeedInput.addEventListener('input', () => {
+      valSpeed.textContent = parseFloat(zoomSpeedInput.value).toFixed(1);
+    });
+    horologicalDetailInput.addEventListener('input', () => {
+      valDetail.textContent = parseFloat(horologicalDetailInput.value).toFixed(1);
+    });
+    recursionDepthInput.addEventListener('input', () => {
+      valDepth.textContent = recursionDepthInput.value;
+      rebuildGasket();
+    });
+
+    // Material Tones: Glass & Brass, Burnished Gold, Antique Bronze, Steel
+    const brassTones = [
+      { main: [228, 186, 75], hi: [255, 238, 160], lo: [135, 92, 32] },  // Imperial Gold
+      { main: [214, 162, 68], hi: [252, 218, 142], lo: [118, 76, 26] },  // Antique Brass
+      { main: [198, 132, 68], hi: [248, 192, 136], lo: [122, 62, 22] },  // Rose Bronze
+      { main: [236, 202, 98], hi: [255, 246, 185], lo: [145, 108, 42] }, // Polished Brass
+      { main: [186, 146, 82], hi: [232, 208, 148], lo: [102, 72, 30] }   // Burnished Bronze
+    ];
+
+    function getBrassTone(depth, variant) {
+      return brassTones[(depth + variant) % brassTones.length];
+    }
+
+    // Geometry & Gasket Generation
+    let circles = [];
+    const sqrt3 = Math.sqrt(3);
+
+    // Zoom Center: Contact junction between central circle c4 and upper circle c1
+    const px = 0;
+    const py = 2 / sqrt3 - 1; // ≈ 0.154700538
+    const S = 3.0; // Geometric scaling ratio along the central crevice
+
+    function nextCircle(ca, cb, cc, cd, d, parentSign) {
+      const k = 2 * (ca.k + cb.k + cc.k) - cd.k;
+      const x = (2 * (ca.k * ca.x + cb.k * cb.x + cc.k * cc.x) - cd.k * cd.x) / k;
+      const y = (2 * (ca.k * ca.y + cb.k * cb.y + cc.k * cc.y) - cd.k * cd.y) / k;
+      const r = Math.abs(1 / k);
+      const phase = Math.abs(Math.sin(x * 12.9898 + y * 78.233)) * Math.PI * 2;
+      const variant = Math.floor(Math.abs(Math.cos(x * 43.12 + y * 19.87)) * 5);
+      const sign = -parentSign;
+      return { k, x, y, r, depth: d, sign, phase, variant };
+    }
+
+    function rebuildGasket() {
+      const maxDepth = parseInt(recursionDepthInput.value, 10);
+      circles = [];
+
+      // c0: outer bounding circle (negative curvature)
+      const k0 = 3 - 2 * sqrt3;
+      const c0 = { k: k0, x: 0, y: 0, r: 1 / Math.abs(k0), depth: 0, sign: 1, phase: 0, variant: 0 };
+      // c1, c2, c3: three congruent inner circles
+      const c1 = { k: 1, x: 0, y: 2 / sqrt3, r: 1, depth: 0, sign: -1, phase: 0, variant: 1 };
+      const c2 = { k: 1, x: -1, y: -1 / sqrt3, r: 1, depth: 0, sign: -1, phase: Math.PI * 0.666, variant: 2 };
+      const c3 = { k: 1, x: 1, y: -1 / sqrt3, r: 1, depth: 0, sign: -1, phase: Math.PI * 1.333, variant: 3 };
+
+      circles.push(c0, c1, c2, c3);
+
+      function branch(ca, cb, cc, cd, d) {
+        if (d > maxDepth) return;
+
+        const n1 = nextCircle(cb, cc, cd, ca, d, ca.sign);
+        circles.push(n1);
+        branch(cb, cc, cd, n1, d + 1);
+
+        const n2 = nextCircle(ca, cc, cd, cb, d, cb.sign);
+        circles.push(n2);
+        branch(ca, cc, cd, n2, d + 1);
+
+        const n3 = nextCircle(ca, cc, cd, cc, d, cc.sign);
+        circles.push(n3);
+        branch(ca, cc, cd, n3, d + 1);
+      }
+
+      // Initial four gap replacements
+      const c4 = nextCircle(c1, c2, c3, c0, 1, c0.sign);
+      circles.push(c4);
+      branch(c1, c2, c3, c4, 2);
+
+      const c012 = nextCircle(c0, c1, c2, c3, 1, c3.sign);
+      circles.push(c012);
+      branch(c0, c1, c2, c012, 2);
+
+      const c023 = nextCircle(c0, c2, c3, c1, 1, c1.sign);
+      circles.push(c023);
+      branch(c0, c2, c3, c023, 2);
+
+      const c031 = nextCircle(c0, c3, c1, c2, 1, c2.sign);
+      circles.push(c031);
+      branch(c0, c3, c1, c031, 2);
+
+      // Pre-sort circles once by radius descending: keeps outer rings behind inner kinetic details
+      circles.sort((a, b) => b.r - a.r);
+    }
+
+    rebuildGasket();
+
+    // Deterministic Celestial Starfield
+    const numStars = 85;
+    const stars = [];
+    for (let i = 0; i < numStars; i++) {
+      stars.push({
+        x: rng(),
+        y: rng(),
+        size: 0.6 + rng() * 1.8,
+        alpha: 0.18 + rng() * 0.45,
+        twinkleSpeed: 0.7 + rng() * 2.8,
+        isSpike: rng() > 0.82
+      });
+    }
+
+    // Animation & Pointer State
+    let lastTime = performance.now();
+    let animProgress = 0;
+    let clockTime = 0;
+
+    let targetOffsetX = 0, targetOffsetY = 0;
+    let currentOffsetX = 0, currentOffsetY = 0;
+    window.addEventListener('pointermove', (e) => {
+      targetOffsetX = (e.clientX - width / 2) * 0.06;
+      targetOffsetY = (e.clientY - height / 2) * 0.06;
+    });
+
+    function render(currentTime) {
+      window.__frames++;
+
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+      lastTime = currentTime;
+
+      const speed = parseFloat(zoomSpeedInput.value);
+      const detail = parseFloat(horologicalDetailInput.value);
+
+      // Smooth zoom progression & clockwork mechanical time
+      animProgress += (dt * speed) / 3.6;
+      const u = animProgress % 1.0;
+      clockTime += dt * speed;
+
+      // Pointer parallax easing
+      currentOffsetX += (targetOffsetX - currentOffsetX) * 0.05;
+      currentOffsetY += (targetOffsetY - currentOffsetY) * 0.05;
+
+      const cx = width / 2 + currentOffsetX;
+      const cy = height / 2 + currentOffsetY;
+
+      // Background: Deep celestial navy / obsidian velvet
+      const bgGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, Math.max(width, height) * 0.9);
+      bgGrad.addColorStop(0, '#090e1c');
+      bgGrad.addColorStop(0.5, '#050812');
+      bgGrad.addColorStop(1, '#020307');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Faint celestial coordinate grid lines
+      const baseViewScale = Math.min(width, height) * 0.48;
+      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = 'rgba(214, 175, 75, 0.04)';
+      for (let r = 1; r <= 3; r++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseViewScale * r * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      for (let a = 0; a < 8; a++) {
+        const ang = a * Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(ang) * width, cy + Math.sin(ang) * height);
+        ctx.stroke();
+      }
+
+      // Background celestial stars
+      const tSec = currentTime / 1000;
+      for (let i = 0; i < numStars; i++) {
+        const st = stars[i];
+        const tw = 0.5 + 0.5 * Math.sin(tSec * st.twinkleSpeed + i);
+        const aVal = st.alpha * tw * 0.4;
+        ctx.fillStyle = 'rgba(235, 215, 170, ' + aVal + ')';
+        const sxSt = st.x * width;
+        const sySt = st.y * height;
+        ctx.beginPath();
+        ctx.arc(sxSt, sySt, st.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (st.isSpike && tw > 0.7) {
+          ctx.strokeStyle = 'rgba(255, 235, 180, ' + (aVal * 0.6) + ')';
+          ctx.beginPath();
+          ctx.moveTo(sxSt - 4, sySt);
+          ctx.lineTo(sxSt + 4, sySt);
+          ctx.moveTo(sxSt, sySt - 4);
+          ctx.lineTo(sxSt, sySt + 4);
+          ctx.stroke();
+        }
+      }
+
+      // Camera scale centered on contact junction
+      const zoomFactor = Math.pow(S, u);
+      const currentScale = baseViewScale * zoomFactor;
+
+      const minR = 0.8;
+      const minRFull = 5.5;
+      const maxR = Math.min(width, height) * 1.45;
+      const maxRFade = maxR * 0.45;
+
+      // Render Orreries & Astrolabe Gears
+      for (let i = 0; i < circles.length; i++) {
+        const c = circles[i];
+        const sr = c.r * currentScale;
+
+        if (sr < minR || sr > maxR) continue;
+
+        const sx = cx + (c.x - px) * currentScale;
+        const sy = cy + (c.y - py) * currentScale;
+
+        // Viewport bounds culling
+        if (sx + sr < -20 || sx - sr > width + 20 || sy + sr < -20 || sy - sr > height + 20) continue;
+
+        // Seamless opacity cross-fading
+        let aIn = 1.0;
+        if (sr < minRFull) {
+          aIn = (sr - minR) / (minRFull - minR);
+          aIn = Math.max(0, Math.min(1, aIn));
+          aIn = aIn * aIn * (3 - 2 * aIn);
+        }
+
+        let aOut = 1.0;
+        if (sr > maxRFade) {
+          aOut = (maxR - sr) / (maxR - maxRFade);
+          aOut = Math.max(0, Math.min(1, aOut));
+          aOut = aOut * aOut * (3 - 2 * aOut);
+        }
+
+        const alpha = aIn * aOut;
+        if (alpha <= 0.005) continue;
+
+        // Angular velocity inversely proportional to radius: constant peripheral gear mesh speed!
+        const effectiveR = Math.max(c.r, 0.038);
+        const angVel = (c.sign || 1) * (0.36 / effectiveR);
+        const rot = angVel * clockTime + c.phase;
+
+        const pal = getBrassTone(c.depth, c.variant);
+        const m = pal.main;
+        const hi = pal.hi;
+        const lo = pal.lo;
+
+        // --- LEVEL OF DETAIL RENDERING ---
+
+        // Sub-microscopic Gear Nodes
+        if (sr < 6) {
+          ctx.beginPath();
+          ctx.arc(sx, sy, Math.max(0.6, sr), 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.85) + ')';
+          ctx.fill();
+          continue;
+        }
+
+        // Small Pinions & Rings (6 <= sr < 20)
+        if (sr < 20) {
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(8, 14, 26,' + (alpha * 0.45) + ')';
+          ctx.fill();
+
+          ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.88) + ')';
+          ctx.lineWidth = Math.min(1.4 * detail, sr * 0.22);
+          ctx.stroke();
+
+          // 3 Spokes & Center Rivet
+          ctx.beginPath();
+          for (let s = 0; s < 3; s++) {
+            const a = rot + s * (Math.PI * 2 / 3);
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + Math.cos(a) * sr, sy + Math.sin(a) * sr);
+          }
+          ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.55) + ')';
+          ctx.lineWidth = 0.65;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(sx, sy, 1.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.95) + ')';
+          ctx.fill();
+          continue;
+        }
+
+        // Medium Astrolabe Gears (20 <= sr < 60)
+        if (sr < 60) {
+          // Glass body fill
+          const gGlass = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+          gGlass.addColorStop(0, 'rgba(6, 10, 22,' + (alpha * 0.65) + ')');
+          gGlass.addColorStop(0.85, 'rgba(12, 18, 36,' + (alpha * 0.45) + ')');
+          gGlass.addColorStop(1, 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.22) + ')');
+          ctx.fillStyle = gGlass;
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Dual outer concentric track
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.arc(sx, sy, sr * 0.86, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.85) + ')';
+          ctx.lineWidth = Math.max(0.7, 1.0 * detail);
+          ctx.stroke();
+
+          // Logarithmic spiral gear teeth along rim
+          const N = Math.min(24, Math.max(10, Math.round(2 * Math.PI * sr / 9)));
+          ctx.beginPath();
+          const step = (Math.PI * 2) / N;
+          const rBase = sr * 0.93;
+          const rTip = sr * 1.05;
+          for (let j = 0; j < N; j++) {
+            const a0 = rot + j * step;
+            const aTip = a0 + (c.sign || 1) * 0.16;
+            const aMid = a0 + (c.sign || 1) * 0.08;
+            const rMid = (rBase + rTip) * 0.5;
+            ctx.moveTo(sx + Math.cos(a0) * rBase, sy + Math.sin(a0) * rBase);
+            ctx.quadraticCurveTo(
+              sx + Math.cos(aMid) * rMid * 1.02,
+              sy + Math.sin(aMid) * rMid * 1.02,
+              sx + Math.cos(aTip) * rTip,
+              sy + Math.sin(aTip) * rTip
+            );
+          }
+          ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.75) + ')';
+          ctx.lineWidth = Math.max(0.6, 0.8 * detail);
+          ctx.stroke();
+
+          // 4 Radial Spokes & Hub
+          const rHub = sr * 0.22;
+          ctx.beginPath();
+          for (let s = 0; s < 4; s++) {
+            const as = rot + s * (Math.PI * 0.5);
+            ctx.moveTo(sx + Math.cos(as) * rHub, sy + Math.sin(as) * rHub);
+            ctx.lineTo(sx + Math.cos(as) * sr * 0.86, sy + Math.sin(as) * sr * 0.86);
+          }
+          ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.72) + ')';
+          ctx.lineWidth = Math.max(0.7, 1.1 * detail);
+          ctx.stroke();
+
+          // Brass hub & cabochon gem
+          ctx.beginPath();
+          ctx.arc(sx, sy, rHub, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + lo[0] + ',' + lo[1] + ',' + lo[2] + ',' + (alpha * 0.85) + ')';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.9) + ')';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+
+          const gemR = (c.variant % 3 === 0) ? '225, 29, 72' : ((c.variant % 3 === 1) ? '56, 189, 248' : '245, 158, 11');
+          ctx.beginPath();
+          ctx.arc(sx, sy, Math.max(1.6, rHub * 0.42), 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + gemR + ',' + (alpha * 0.95) + ')';
+          ctx.fill();
+          continue;
+        }
+
+        // --- Large & Monumental Astrolabe Orrery (sr >= 60) ---
+        // Completely populates the massive interior voids with intricate kinetic horological machinery!
+
+        // 1. Crystal Sapphire Glass Plate
+        const gGlassL = ctx.createRadialGradient(sx, sy, sr * 0.08, sx, sy, sr);
+        gGlassL.addColorStop(0, 'rgba(4, 8, 18,' + (alpha * 0.78) + ')');
+        gGlassL.addColorStop(0.65, 'rgba(10, 16, 32,' + (alpha * 0.55) + ')');
+        gGlassL.addColorStop(0.92, 'rgba(18, 28, 48,' + (alpha * 0.4) + ')');
+        gGlassL.addColorStop(1, 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.28) + ')');
+        ctx.fillStyle = gGlassL;
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Triple Chamfered Brass Rim & Graduation Limb
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.arc(sx, sy, sr * 0.94, 0, Math.PI * 2);
+        ctx.arc(sx, sy, sr * 0.86, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.85) + ')';
+        ctx.lineWidth = Math.max(0.8, 1.2 * detail);
+        ctx.stroke();
+
+        // High specular highlight line
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr * 0.99, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.65) + ')';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+
+        // Outer Logarithmic Spiral Gear Teeth
+        const NBig = Math.min(48, Math.max(16, Math.round(2 * Math.PI * sr / 12)));
+        ctx.beginPath();
+        const stepBig = (Math.PI * 2) / NBig;
+        const rBaseB = sr * 0.94;
+        const rTipB = sr * 1.05;
+        for (let j = 0; j < NBig; j++) {
+          const a0 = rot + j * stepBig;
+          const aTip = a0 + (c.sign || 1) * 0.14;
+          const aMid = a0 + (c.sign || 1) * 0.07;
+          const rMid = (rBaseB + rTipB) * 0.5;
+          ctx.moveTo(sx + Math.cos(a0) * rBaseB, sy + Math.sin(a0) * rBaseB);
+          ctx.quadraticCurveTo(
+            sx + Math.cos(aMid) * rMid * 1.02,
+            sy + Math.sin(aMid) * rMid * 1.02,
+            sx + Math.cos(aTip) * rTipB,
+            sy + Math.sin(aTip) * rTipB
+          );
+        }
+        ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.78) + ')';
+        ctx.lineWidth = Math.max(0.7, 0.9 * detail);
+        ctx.stroke();
+
+        // Astrolabe Graduation Tick Marks (between 0.86 * sr and 0.94 * sr)
+        ctx.beginPath();
+        const numTicks = sr > 120 ? 48 : 24;
+        const tickStep = (Math.PI * 2) / numTicks;
+        for (let t = 0; t < numTicks; t++) {
+          const at = rot * 0.6 + t * tickStep;
+          const isMajor = (t % 4 === 0);
+          const rIn = isMajor ? sr * 0.86 : sr * 0.89;
+          ctx.moveTo(sx + Math.cos(at) * rIn, sy + Math.sin(at) * rIn);
+          ctx.lineTo(sx + Math.cos(at) * sr * 0.94, sy + Math.sin(at) * sr * 0.94);
+        }
+        ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.6) + ')';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+
+        // 3. Intricate Astrolabe Rete: Logarithmic Spiral Arms
+        const numSpirals = sr > 140 ? 6 : 4;
+        const rHubL = Math.max(5, Math.min(22, sr * 0.16));
+        ctx.beginPath();
+        for (let s = 0; s < numSpirals; s++) {
+          const aStart = rot + s * (Math.PI * 2 / numSpirals);
+          // Evaluate logarithmic spiral r(u) = rHub + (0.85*sr - rHub) * u, angle(u) = aStart + sign * 1.15 * ln(1 + 1.718*u)
+          let prevX = sx + Math.cos(aStart) * rHubL;
+          let prevY = sy + Math.sin(aStart) * rHubL;
+          ctx.moveTo(prevX, prevY);
+          for (let step = 1; step <= 6; step++) {
+            const uNorm = step / 6;
+            const rStep = rHubL + (sr * 0.85 - rHubL) * uNorm;
+            const aStep = aStart + (c.sign || 1) * 1.15 * Math.log(1 + 1.718 * uNorm);
+            const nextX = sx + Math.cos(aStep) * rStep;
+            const nextY = sy + Math.sin(aStep) * rStep;
+            ctx.lineTo(nextX, nextY);
+          }
+        }
+        ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.68) + ')';
+        ctx.lineWidth = Math.max(0.65, 0.9 * detail);
+        ctx.stroke();
+
+        // 4. Eccentric Ecliptic (Zodiac) Ring
+        const eOffset = 0.18 * sr;
+        const eX = sx + Math.cos(rot * 0.7) * eOffset;
+        const eY = sy + Math.sin(rot * 0.7) * eOffset;
+        const eR = 0.46 * sr;
+        ctx.beginPath();
+        ctx.arc(eX, eY, eR, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.5) + ')';
+        ctx.lineWidth = Math.max(0.6, 0.8 * detail);
+        ctx.stroke();
+
+        // Zodiac Pips along the ecliptic ring
+        ctx.fillStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.75) + ')';
+        for (let z = 0; z < 12; z++) {
+          const az = rot * 0.7 + z * (Math.PI / 6);
+          ctx.beginPath();
+          ctx.arc(eX + Math.cos(az) * eR, eY + Math.sin(az) * eR, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 5. Kinetic Planetary Epicycles (Orbiting Gemstone Nodes)
+        const numEpicycles = sr > 150 ? 2 : 1;
+        for (let ep = 0; ep < numEpicycles; ep++) {
+          const epTrack = (0.56 + ep * 0.16) * sr;
+          const epAng = rot * (1.7 + ep * 0.6) + c.phase + ep * Math.PI;
+          const epX = sx + Math.cos(epAng) * epTrack;
+          const epY = sy + Math.sin(epAng) * epTrack;
+          const epPinionR = Math.max(2.5, sr * 0.055);
+
+          // Orbit track ring
+          ctx.beginPath();
+          ctx.arc(sx, sy, epTrack, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.16) + ')';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+
+          // Epicycle gear wheel
+          ctx.beginPath();
+          ctx.arc(epX, epY, epPinionR, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + lo[0] + ',' + lo[1] + ',' + lo[2] + ',' + (alpha * 0.8) + ')';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.85) + ')';
+          ctx.lineWidth = 0.6;
+          ctx.stroke();
+
+          // Polished gem at epicycle pivot
+          const epGem = (ep === 0) ? '225, 29, 72' : '56, 189, 248';
+          ctx.beginPath();
+          ctx.arc(epX, epY, epPinionR * 0.5, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + epGem + ',' + (alpha * 0.95) + ')';
+          ctx.fill();
+        }
+
+        // 6. Openwork Radial Structural Spokes
+        const spokeCountL = sr > 140 ? 6 : 4;
+        ctx.beginPath();
+        for (let s = 0; s < spokeCountL; s++) {
+          const as = rot + s * (Math.PI * 2 / spokeCountL);
+          ctx.moveTo(sx + Math.cos(as) * rHubL, sy + Math.sin(as) * rHubL);
+          ctx.lineTo(sx + Math.cos(as) * sr * 0.86, sy + Math.sin(as) * sr * 0.86);
+        }
+        ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (alpha * 0.75) + ')';
+        ctx.lineWidth = Math.max(0.8, 1.4 * detail);
+        ctx.stroke();
+
+        // 7. Multi-tiered Brass Hub & Central Cabochon Dome
+        ctx.beginPath();
+        ctx.arc(sx, sy, rHubL, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + lo[0] + ',' + lo[1] + ',' + lo[2] + ',' + (alpha * 0.9) + ')';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(' + hi[0] + ',' + hi[1] + ',' + hi[2] + ',' + (alpha * 0.95) + ')';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+
+        // Central Sunburst / Cabochon Jewel
+        const cabColor = (c.variant % 3 === 0) ? '225, 29, 72' : ((c.variant % 3 === 1) ? '56, 189, 248' : '245, 158, 11');
+        ctx.beginPath();
+        ctx.arc(sx, sy, rHubL * 0.55, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + cabColor + ',' + (alpha * 0.98) + ')';
+        ctx.fill();
+
+        // Specular reflection highlight on jewel
+        ctx.beginPath();
+        ctx.arc(sx - rHubL * 0.16, sy - rHubL * 0.16, rHubL * 0.18, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255,' + (alpha * 0.8) + ')';
+        ctx.fill();
+      }
+
+      // Singularity Junction Atmospheric Glow (Warm Antique Gold)
+      const junctionGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 55);
+      junctionGlow.addColorStop(0, 'rgba(255, 222, 125, 0.32)');
+      junctionGlow.addColorStop(0.35, 'rgba(214, 165, 65, 0.14)');
+      junctionGlow.addColorStop(0.7, 'rgba(180, 95, 30, 0.05)');
+      junctionGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = junctionGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 55, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Delicate Astrolabe Alidade / Crosshair at Singularity
+      ctx.strokeStyle = 'rgba(255, 235, 160, 0.28)';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(cx - 24, cy);
+      ctx.lineTo(cx + 24, cy);
+      ctx.moveTo(cx, cy - 24);
+      ctx.lineTo(cx, cy + 24);
+      ctx.stroke();
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vaporwave Perspective Grid</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #050014;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  #ui {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    background: rgba(5, 0, 20, 0.85);
+    border: 1px solid rgba(255, 113, 206, 0.4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), 0 0 10px rgba(185, 103, 255, 0.3);
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: #fffb96;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+    user-select: none;
+    z-index: 10;
+    width: 240px;
+    backdrop-filter: blur(8px);
+  }
+  #ui h1 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #ff71ce;
+    text-shadow: 0 0 8px rgba(255, 113, 206, 0.6);
+    margin-bottom: 12px;
+  }
+  .control {
+    margin-bottom: 10px;
+  }
+  .control:last-child {
+    margin-bottom: 0;
+  }
+  .control-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: #01cdfe;
+    font-weight: 600;
+  }
+  input[type="range"] {
+    width: 100%;
+    height: 4px;
+    appearance: none;
+    background: rgba(185, 103, 255, 0.3);
+    border-radius: 2px;
+    outline: none;
+    accent-color: #ff71ce;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff71ce;
+    cursor: pointer;
+    box-shadow: 0 0 6px #ff71ce;
+  }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div id="ui">
+  <h1>Vaporwave Perspective Grid</h1>
+  <div class="control">
+    <div class="control-header"><span>Grid Speed</span><span id="val-speed">1.0</span></div>
+    <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+  </div>
+  <div class="control">
+    <div class="control-header"><span>Sun Elevation</span><span id="val-sun">0.50</span></div>
+    <input type="range" id="sun" min="0" max="1" step="0.05" value="0.5">
+  </div>
+  <div class="control">
+    <div class="control-header"><span>VHS Distortion</span><span id="val-vhs">0.40</span></div>
+    <input type="range" id="vhs" min="0" max="1" step="0.05" value="0.4">
+  </div>
+</div>
+
+<script>
+window.__frames = 0;
+
+const params = new URLSearchParams(window.location.search);
+const seedStr = params.get('seed') || '1';
+let seedVal = 0;
+for (let i = 0; i < seedStr.length; i++) {
+  seedVal = ((seedVal << 5) - seedVal + seedStr.charCodeAt(i)) | 0;
+}
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const prng = mulberry32(seedVal);
+const uSeed = prng();
+const uSeed2 = prng();
+
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) {
+  throw new Error("WebGL2 not supported");
+}
+
+const vsSource = `#version 300 es
+in vec2 a_position;
+out vec2 v_uv;
+void main() {
+  v_uv = (a_position + 1.0) * 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+const fsSource = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_speed;
+uniform float u_sun_elev;
+uniform float u_vhs;
+uniform float u_seed;
+uniform float u_seed2;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+vec3 renderScene(vec2 uv) {
+  float aspect = u_resolution.x / u_resolution.y;
+  float horiz = 0.36 + u_sun_elev * 0.10;
+  vec3 col = vec3(0.0);
+
+  if (uv.y >= horiz) {
+    float skyT = clamp((uv.y - horiz) / (1.0 - horiz), 0.0, 1.0);
+    vec3 cZenith = vec3(0.03, 0.0, 0.10);
+    vec3 cMidSky = mix(vec3(0.35, 0.05, 0.55), vec3(0.12, 0.02, 0.45), u_seed2);
+    vec3 cHorizGlow = vec3(0.95, 0.25, 0.65);
+    vec3 sky = mix(cHorizGlow, cMidSky, smoothstep(0.0, 0.45, skyT));
+    sky = mix(sky, cZenith, smoothstep(0.3, 1.0, skyT));
+
+    vec2 starCell = floor(uv * 140.0);
+    float starRand = hash21(starCell + u_seed * 37.1);
+    if (starRand > 0.985 && uv.y > horiz + 0.12) {
+      float starTwinkle = 0.5 + 0.5 * sin(u_time * 2.5 + starRand * 40.0);
+      sky += vec3(0.6, 0.9, 1.0) * starTwinkle * 0.85;
+    }
+
+    vec2 sunPos = vec2(0.5, horiz + 0.06 + u_sun_elev * 0.22);
+    float sunRad = 0.22;
+    vec2 sDelta = uv - sunPos;
+    sDelta.x *= aspect;
+    float sDist = length(sDelta);
+
+    float glow = exp(-sDist * 3.8) * 0.75 + exp(-sDist * 9.0) * 0.5;
+    vec3 glowCol = mix(vec3(1.0, 0.15, 0.6), vec3(1.0, 0.85, 0.3), exp(-sDist * 6.0));
+    sky += glowCol * glow;
+
+    if (sDist < sunRad) {
+      float sunNormY = (uv.y - (sunPos.y - sunRad)) / (2.0 * sunRad);
+      vec3 sunInner = mix(vec3(1.0, 0.1, 0.55), vec3(1.0, 0.98, 0.5), pow(clamp(sunNormY, 0.0, 1.0), 0.7));
+
+      float sunRelY = (sunPos.y - uv.y) / sunRad;
+      bool inCut = false;
+      if (sunRelY > 0.0) {
+        float stripeY = (sunPos.y - uv.y) * 48.0;
+        float cutThick = pow(sunRelY, 1.35) * 0.65;
+        if (fract(stripeY) < cutThick) {
+          inCut = true;
+        }
+      }
+      if (!inCut) {
+        float sunEdge = smoothstep(sunRad, sunRad - 0.003, sDist);
+        sky = mix(sky, sunInner, sunEdge);
+      }
+    }
+
+    float nx1 = uv.x * 10.0 + u_seed * 15.0;
+    float mtn1 = (sin(nx1) * 0.5 + sin(nx1 * 2.3 + 1.2) * 0.3 + sin(nx1 * 5.1) * 0.15 + 0.45) * 0.07;
+    mtn1 = max(mtn1, 0.0);
+    float mtnY1 = horiz + mtn1;
+
+    if (uv.y < mtnY1) {
+      vec3 mtnCol1 = vec3(0.08, 0.01, 0.16);
+      float rim1 = smoothstep(0.006, 0.0, abs(uv.y - mtnY1));
+      sky = mix(sky, mtnCol1 + vec3(0.5, 0.1, 0.7) * rim1, 0.95);
+    }
+
+    float nx2 = uv.x * 16.0 + u_seed * 27.0 + 2.0;
+    float mtn2 = (abs(sin(nx2)) * 0.6 + abs(sin(nx2 * 2.1 + 0.7)) * 0.3) * 0.055;
+    float mtnY2 = horiz + mtn2;
+
+    if (uv.y < mtnY2) {
+      vec3 mtnCol2 = vec3(0.04, 0.0, 0.09);
+      float rim2 = smoothstep(0.005, 0.0, abs(uv.y - mtnY2));
+      float mGrid = smoothstep(0.08, 0.0, abs(fract(uv.x * 32.0) - 0.5)) * 0.25;
+      vec3 rimCol = mix(vec3(1.0, 0.1, 0.7), vec3(0.0, 0.85, 1.0), sin(uv.x * 12.0) * 0.5 + 0.5);
+      sky = mtnCol2 + rimCol * (rim2 * 1.5 + mGrid);
+    }
+
+    col = sky;
+  } else {
+    float depth = horiz - uv.y;
+    float z = 0.32 / max(depth, 0.0001);
+    float x = (uv.x - 0.5) * z * aspect * 1.5;
+
+    z += u_time * u_speed * 2.2;
+
+    vec2 gpos = vec2(x, z);
+    vec2 fw = clamp(fwidth(gpos), 0.0001, 1.0);
+    vec2 gfract = abs(fract(gpos - 0.5) - 0.5);
+
+    vec2 lines = smoothstep(fw * 1.3, vec2(0.0), gfract - 0.038);
+    float lineIntensity = max(lines.x, lines.y);
+
+    float glowLine = exp(-min(gfract.x, gfract.y) * 9.0) * 0.65;
+    lineIntensity = max(lineIntensity, glowLine);
+
+    float fog = smoothstep(0.001, 0.14, depth);
+    lineIntensity *= fog;
+
+    vec3 gridCol = mix(vec3(1.0, 0.1, 0.65), vec3(0.0, 0.9, 1.0), sin(x * 0.5 + u_seed * 6.28) * 0.5 + 0.5);
+
+    vec3 floorBase = vec3(0.02, 0.005, 0.05) + vec3(0.06, 0.01, 0.10) * (1.0 - fog);
+
+    float reflX = abs(uv.x - 0.5) * aspect;
+    float sunRefl = exp(-reflX * 4.2) * smoothstep(0.0, 0.32, depth);
+    sunRefl *= (0.65 + 0.35 * sin(z * 3.0));
+    vec3 reflCol = mix(vec3(1.0, 0.2, 0.6), vec3(1.0, 0.9, 0.4), sunRefl);
+    floorBase += reflCol * sunRefl * 0.8;
+
+    col = floorBase + gridCol * lineIntensity * 1.4;
+  }
+
+  float horizGlow = exp(-abs(uv.y - horiz) * 140.0);
+  vec3 hCol = mix(vec3(1.0, 0.1, 0.7), vec3(0.0, 0.85, 1.0), sin(uv.x * 5.0 + u_seed * 4.0) * 0.5 + 0.5);
+  col += hCol * horizGlow * 0.9;
+
+  return col;
+}
+
+void main() {
+  vec2 uv = v_uv;
+
+  float trackingJitter = 0.0;
+  if (u_vhs > 0.01) {
+    float tapeBandY = fract(-u_time * 0.12);
+    float tapeDist = abs(uv.y - tapeBandY);
+    float tapeWave = smoothstep(0.06, 0.0, tapeDist);
+    float noiseLine = hash21(vec2(floor(uv.y * 360.0), floor(u_time * 40.0)));
+    trackingJitter = (sin(uv.y * 160.0 + u_time * 20.0) * 0.001 + tapeWave * (noiseLine - 0.5) * 0.015) * u_vhs;
+  }
+
+  vec2 uvJittered = uv + vec2(trackingJitter, 0.0);
+
+  float caOffset = (0.002 + 0.0035 * length(uv - 0.5)) * u_vhs;
+  float colR = renderScene(uvJittered + vec2(caOffset, 0.0)).r;
+  float colG = renderScene(uvJittered).g;
+  float colB = renderScene(uvJittered - vec2(caOffset * 0.8, 0.0)).b;
+  vec3 col = vec3(colR, colG, colB);
+
+  if (u_vhs > 0.01) {
+    float scanline = sin(uv.y * u_resolution.y * 1.57079 + u_time * 4.0) * 0.5 + 0.5;
+    col *= 1.0 - (0.22 * u_vhs * (1.0 - scanline));
+
+    float analogNoise = (hash21(uv * u_resolution.xy + fract(u_time * 19.3)) - 0.5) * 0.045 * u_vhs;
+    col += analogNoise;
+  }
+
+  float vig = uv.x * uv.y * (1.0 - uv.x) * (1.0 - uv.y);
+  vig = clamp(pow(16.0 * vig, 0.28), 0.0, 1.0);
+  col *= mix(1.0, vig, 0.65);
+
+  col = pow(col, vec3(0.95));
+
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+function createShader(glCtx, type, source) {
+  const shader = glCtx.createShader(type);
+  glCtx.shaderSource(shader, source);
+  glCtx.compileShader(shader);
+  if (!glCtx.getShaderParameter(shader, glCtx.COMPILE_STATUS)) {
+    const info = glCtx.getShaderInfoLog(shader);
+    glCtx.deleteShader(shader);
+    throw new Error("Shader compile failed: " + info);
+  }
+  return shader;
+}
+
+function createProgram(glCtx, vsSrc, fsSrc) {
+  const vs = createShader(glCtx, glCtx.VERTEX_SHADER, vsSrc);
+  const fs = createShader(glCtx, glCtx.FRAGMENT_SHADER, fsSrc);
+  const prog = glCtx.createProgram();
+  glCtx.attachShader(prog, vs);
+  glCtx.attachShader(prog, fs);
+  glCtx.linkProgram(prog);
+  if (!glCtx.getProgramParameter(prog, glCtx.LINK_STATUS)) {
+    const info = glCtx.getProgramInfoLog(prog);
+    glCtx.deleteProgram(prog);
+    throw new Error("Program link failed: " + info);
+  }
+  return prog;
+}
+
+const program = createProgram(gl, vsSource, fsSource);
+
+const quadBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1, -1,
+   1, -1,
+  -1,  1,
+  -1,  1,
+   1, -1,
+   1,  1,
+]), gl.STATIC_DRAW);
+
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const posLoc = gl.getAttribLocation(program, "a_position");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uResLoc = gl.getUniformLocation(program, "u_resolution");
+const uTimeLoc = gl.getUniformLocation(program, "u_time");
+const uSpeedLoc = gl.getUniformLocation(program, "u_speed");
+const uSunLoc = gl.getUniformLocation(program, "u_sun_elev");
+const uVhsLoc = gl.getUniformLocation(program, "u_vhs");
+const uSeedLoc = gl.getUniformLocation(program, "u_seed");
+const uSeed2Loc = gl.getUniformLocation(program, "u_seed2");
+
+const speedInput = document.getElementById('speed');
+const sunInput = document.getElementById('sun');
+const vhsInput = document.getElementById('vhs');
+const valSpeed = document.getElementById('val-speed');
+const valSun = document.getElementById('val-sun');
+const valVhs = document.getElementById('val-vhs');
+
+speedInput.addEventListener('input', (e) => {
+  valSpeed.textContent = parseFloat(e.target.value).toFixed(1);
+});
+sunInput.addEventListener('input', (e) => {
+  valSun.textContent = parseFloat(e.target.value).toFixed(2);
+});
+vhsInput.addEventListener('input', (e) => {
+  valVhs.textContent = parseFloat(e.target.value).toFixed(2);
+});
+
+let uiVisible = true;
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    uiVisible = !uiVisible;
+    const ui = document.getElementById('ui');
+    if (ui) {
+      ui.style.display = uiVisible ? 'block' : 'none';
+    }
+  }
+});
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const displayWidth = Math.floor(window.innerWidth * dpr);
+  const displayHeight = Math.floor(window.innerHeight * dpr);
+  if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
+    gl.viewport(0, 0, displayWidth, displayHeight);
+  }
+}
+window.addEventListener('resize', resize);
+resize();
+
+let startTime = null;
+
+function frame(currentTime) {
+  window.__frames++;
+  if (startTime === null) startTime = currentTime;
+
+  resize();
+  const elapsed = (currentTime - startTime) * 0.001;
+
+  gl.useProgram(program);
+  gl.bindVertexArray(vao);
+
+  gl.uniform2f(uResLoc, canvas.width, canvas.height);
+  gl.uniform1f(uTimeLoc, elapsed);
+  gl.uniform1f(uSpeedLoc, parseFloat(speedInput.value));
+  gl.uniform1f(uSunLoc, parseFloat(sunInput.value));
+  gl.uniform1f(uVhsLoc, parseFloat(vhsInput.value));
+  gl.uniform1f(uSeedLoc, uSeed);
+  gl.uniform1f(uSeed2Loc, uSeed2);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

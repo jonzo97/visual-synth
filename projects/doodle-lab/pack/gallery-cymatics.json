@@ -1,0 +1,13 @@
+{
+ "title": "Cymatics Plate",
+ "blurb": "Sand on a vibrating square plate settles onto the Chladni nodal lines of each mode (m, n), with an optional tone.",
+ "tags": [
+  "simulation",
+  "sound"
+ ],
+ "controls": "Mode sliders, Auto modes, Sound; tap to scatter the sand",
+ "tech": "Canvas 2D particles",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night, Claude mobile)",
+ "page": "pack/genart-session-gallery-v1.html#cymatics"
+}

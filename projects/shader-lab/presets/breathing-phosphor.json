@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "name": "Breathing Phosphor",
+  "nodes": [
+    {
+      "id": "silk",
+      "type": "silk",
+      "position": {
+        "x": 0,
+        "y": 80
+      },
+      "params": {
+        "fold": 0.65,
+        "density": 30,
+        "palette": 6,
+        "layers": 3,
+        "offset": 0,
+        "ratio": 1.71,
+        "strength": 0.35,
+        "mode": 0,
+        "ax": 0.35,
+        "ay": 0.45,
+        "bx": 0.65,
+        "by": 0.55,
+        "crossing": 2,
+        "angle": 1.1344640137963142,
+        "mixAmount": 1
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "position": {
+        "x": 960,
+        "y": 80
+      },
+      "params": {}
+    },
+    {
+      "id": "bayer",
+      "type": "fx.bayer",
+      "position": {
+        "x": 240,
+        "y": 80
+      },
+      "params": {
+        "amount": 0.72,
+        "threshold": 0,
+        "scale": 2
+      }
+    },
+    {
+      "id": "glow",
+      "type": "fx.glow",
+      "position": {
+        "x": 480,
+        "y": 80
+      },
+      "params": {
+        "amount": 0.58
+      }
+    },
+    {
+      "id": "reverb",
+      "type": "fx.reverb",
+      "position": {
+        "x": 720,
+        "y": 80
+      },
+      "params": {
+        "amount": 0.4
+      }
+    },
+    {
+      "id": "breathing-lfo",
+      "type": "lfo",
+      "position": {
+        "x": 230,
+        "y": 390
+      },
+      "params": {
+        "shape": 0,
+        "rate": 0.25,
+        "sync": 1,
+        "beats": 16,
+        "phase": 0
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "frame-0",
+      "from": {
+        "node": "silk",
+        "port": "frame"
+      },
+      "to": {
+        "node": "bayer",
+        "port": "in"
+      }
+    },
+    {
+      "id": "frame-1",
+      "from": {
+        "node": "bayer",
+        "port": "frame"
+      },
+      "to": {
+        "node": "glow",
+        "port": "in"
+      }
+    },
+    {
+      "id": "frame-2",
+      "from": {
+        "node": "glow",
+        "port": "frame"
+      },
+      "to": {
+        "node": "reverb",
+        "port": "in"
+      }
+    },
+    {
+      "id": "frame-3",
+      "from": {
+        "node": "reverb",
+        "port": "frame"
+      },
+      "to": {
+        "node": "output",
+        "port": "in"
+      }
+    },
+    {
+      "id": "threshold-breath",
+      "from": {
+        "node": "breathing-lfo",
+        "port": "value"
+      },
+      "to": {
+        "node": "bayer",
+        "port": "param:threshold"
+      },
+      "depth": 0.22
+    }
+  ],
+  "transport": {
+    "bpm": 120,
+    "loopSeconds": 12
+  },
+  "events": []
+}

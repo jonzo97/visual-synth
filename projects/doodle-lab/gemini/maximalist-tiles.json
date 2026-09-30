@@ -1,0 +1,15 @@
+{
+ "title": "Maximalist Tiles",
+ "blurb": "An edge-to-edge collage of clashing patterns in recursive compartments that reshuffle on the beat. From the Maximalism style.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "pattern",
+  "style study"
+ ],
+ "controls": "Sliders: Subdivision Depth, BPM Tempo, Pattern Complexity · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/035-style-maximalism/index.html"
+}

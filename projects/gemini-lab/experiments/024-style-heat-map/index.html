@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Thermal Camera Metaball Heatmap</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #060511;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #overlay {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 10;
+    background: rgba(10, 8, 38, 0.82);
+    border: 1px solid rgba(184, 27, 79, 0.38);
+    border-radius: 8px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 16px 18px;
+    color: #e5e3f2;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    width: 260px;
+    pointer-events: auto;
+  }
+  .title {
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.6px;
+    color: #ffffff;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+  }
+  .subtitle {
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    color: #f36d1a;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .control-row {
+    margin-bottom: 10px;
+  }
+  .label-val {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: #c4c0dc;
+  }
+  .label-val span {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #f9d838;
+    font-weight: 600;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 2px;
+    outline: none;
+    margin: 4px 0;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #f36d1a;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 6px rgba(243, 109, 26, 0.8);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #f36d1a;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 6px rgba(243, 109, 26, 0.8);
+  }
+  .hint {
+    margin-top: 10px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    text-align: right;
+    letter-spacing: 0.3px;
+  }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+
+<div id="overlay">
+  <div class="title">Thermal Camera Metaball Heatmap</div>
+  <div class="subtitle">CALIBRATED ISOTHERM RADIOMETRY</div>
+  <div class="control-row">
+    <div class="label-val">
+      <label for="sourceCount">Source Count</label>
+      <span id="sourceCountVal">12</span>
+    </div>
+    <input type="range" id="sourceCount" min="4" max="24" step="1" value="12">
+  </div>
+  <div class="control-row">
+    <div class="label-val">
+      <label for="diffusionRadius">Diffusion Radius</label>
+      <span id="diffusionRadiusVal">1.2</span>
+    </div>
+    <input type="range" id="diffusionRadius" min="0.5" max="2.5" step="0.1" value="1.2">
+  </div>
+  <div class="control-row">
+    <div class="label-val">
+      <label for="isothermDensity">Isotherm Density</label>
+      <span id="isothermDensityVal">16</span>
+    </div>
+    <input type="range" id="isothermDensity" min="4" max="32" step="1" value="16">
+  </div>
+  <div class="hint">Press [H] to toggle HUD</div>
+</div>
+
+<script>
+window.__frames = 0;
+
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const params = new URLSearchParams(window.location.search);
+const seed = parseInt(params.get('seed') || '1', 10);
+const rng = mulberry32(seed);
+
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2', {
+  alpha: false,
+  antialias: false,
+  depth: false,
+  stencil: false,
+  powerPreference: 'high-performance'
+});
+
+if (!gl) {
+  throw new Error('WebGL2 is not supported on this browser or environment.');
+}
+
+const vsSource = `#version 300 es
+precision highp float;
+const vec2 pos[3] = vec2[3](
+  vec2(-1.0, -1.0),
+  vec2( 3.0, -1.0),
+  vec2(-1.0,  3.0)
+);
+out vec2 v_uv;
+void main() {
+  v_uv = pos[gl_VertexID] * 0.5 + 0.5;
+  gl_Position = vec4(pos[gl_VertexID], 0.0, 1.0);
+}`;
+
+const fsSource = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform int u_blobCount;
+uniform float u_diffusion;
+uniform float u_isothermDensity;
+uniform vec4 u_blobs[24];
+
+vec3 samplePalette(float t) {
+  t = clamp(t, 0.0, 1.05);
+  vec3 c0 = vec3(0.0392, 0.0314, 0.1490); // #0a0826
+  vec3 c1 = vec3(0.2941, 0.0627, 0.4706); // #4b1078
+  vec3 c2 = vec3(0.7216, 0.1059, 0.3098); // #b81b4f
+  vec3 c3 = vec3(0.9529, 0.4275, 0.1020); // #f36d1a
+  vec3 c4 = vec3(0.9765, 0.8471, 0.2196); // #f9d838
+  vec3 c5 = vec3(1.0000, 1.0000, 1.0000); // #ffffff
+
+  if (t < 0.20) {
+    return mix(c0, c1, t / 0.20);
+  } else if (t < 0.45) {
+    return mix(c1, c2, (t - 0.20) / 0.25);
+  } else if (t < 0.70) {
+    return mix(c2, c3, (t - 0.45) / 0.25);
+  } else if (t < 0.90) {
+    return mix(c3, c4, (t - 0.70) / 0.20);
+  } else {
+    return mix(c4, c5, clamp((t - 0.90) / 0.15, 0.0, 1.0));
+  }
+}
+
+void main() {
+  vec2 fc = gl_FragCoord.xy;
+  float minDim = min(u_resolution.x, u_resolution.y);
+  vec2 p = (fc * 2.0 - u_resolution) / minDim;
+
+  float temp = 0.0;
+  for (int i = 0; i < 24; ++i) {
+    if (i >= u_blobCount) break;
+    vec2 d = p - u_blobs[i].xy;
+    float dist2 = dot(d, d);
+    float r = u_blobs[i].z * u_diffusion;
+    float r2 = r * r;
+    float contrib = u_blobs[i].w * (r2 / (dist2 + 0.135 * r2));
+    temp += contrib * 0.078;
+  }
+
+  vec3 color = samplePalette(temp);
+
+  // Isotherm contour lines
+  float isoVal = temp * u_isothermDensity;
+  float distToIso = abs(fract(isoVal + 0.5) - 0.5);
+  float isoGrad = max(fwidth(isoVal), 0.0001);
+
+  float isMajor = step(0.85, 1.0 - abs(fract(isoVal * 0.25 + 0.5) - 0.5) * 4.0);
+  float lineWidth = mix(0.85, 1.45, isMajor) * isoGrad;
+  float lineAlpha = 1.0 - smoothstep(0.0, lineWidth, distToIso);
+  float glowAlpha = exp(-distToIso / (isoGrad * 3.6 + 0.015)) * 0.32;
+
+  vec3 isoCol = mix(vec3(1.0, 0.98, 0.95), vec3(0.07, 0.02, 0.14), smoothstep(0.78, 0.96, temp));
+  color = mix(color, isoCol, clamp(lineAlpha + glowAlpha, 0.0, 0.92));
+
+  // Scientific reticle
+  vec2 centerOffset = abs(fc - u_resolution * 0.5);
+  if ((centerOffset.x < 11.0 && centerOffset.y < 1.0 && centerOffset.x > 2.0) ||
+      (centerOffset.y < 11.0 && centerOffset.x < 1.0 && centerOffset.y > 2.0)) {
+    color = mix(color, vec3(1.0), 0.45);
+  }
+
+  // Corner brackets
+  vec2 cornerDist = min(fc, u_resolution - fc);
+  float inset = 22.0;
+  float bracketLen = 20.0;
+  if ((abs(cornerDist.x - inset) < 1.0 && cornerDist.y >= inset && cornerDist.y <= inset + bracketLen) ||
+      (abs(cornerDist.y - inset) < 1.0 && cornerDist.x >= inset && cornerDist.x <= inset + bracketLen)) {
+    color = mix(color, vec3(0.7, 0.65, 0.9), 0.4);
+  }
+
+  // Calibrated vertical temperature scale
+  float barWidth = 15.0;
+  float barMarginRight = 28.0;
+  float barX0 = u_resolution.x - barMarginRight - barWidth;
+  float barX1 = u_resolution.x - barMarginRight;
+  float barY0 = u_resolution.y * 0.18;
+  float barY1 = u_resolution.y * 0.82;
+  float barHeight = barY1 - barY0;
+
+  if (fc.x >= barX0 - 8.0 && fc.x <= barX1 + 1.0 && fc.y >= barY0 - 1.0 && fc.y <= barY1 + 1.0) {
+    if (fc.x >= barX0 && fc.x <= barX1 && fc.y >= barY0 && fc.y <= barY1) {
+      float tBar = (fc.y - barY0) / barHeight;
+      float tempBar = tBar * 1.05;
+      vec3 colBar = samplePalette(tempBar);
+
+      float barIso = tempBar * u_isothermDensity;
+      float barIsoDist = abs(fract(barIso + 0.5) - 0.5);
+      float barIsoGrad = fwidth(barIso);
+      float barTick = 1.0 - smoothstep(0.0, barIsoGrad * 1.3, barIsoDist);
+      vec3 tickCol = mix(vec3(1.0), vec3(0.05, 0.02, 0.1), smoothstep(0.8, 0.95, tempBar));
+      colBar = mix(colBar, tickCol, barTick * 0.85);
+
+      if (fc.x == barX0 || fc.x == barX1 || fc.y == barY0 || fc.y == barY1) {
+        colBar = vec3(0.04, 0.03, 0.1);
+      }
+      color = colBar;
+    } else if (fc.x < barX0 && fc.x >= barX0 - 6.0 && fc.y >= barY0 && fc.y <= barY1) {
+      float tBar = (fc.y - barY0) / barHeight;
+      float tempBar = tBar * 1.05;
+      float barIso = tempBar * u_isothermDensity;
+      float barIsoDist = abs(fract(barIso + 0.5) - 0.5);
+      float barIsoGrad = fwidth(barIso);
+      float barTick = 1.0 - smoothstep(0.0, barIsoGrad * 1.4, barIsoDist);
+      float isMajorBar = step(0.85, 1.0 - abs(fract(barIso * 0.25 + 0.5) - 0.5) * 4.0);
+      float tickLen = mix(3.0, 6.0, isMajorBar);
+      if (barX0 - fc.x <= tickLen && barTick > 0.35) {
+        color = vec3(0.9, 0.92, 1.0);
+      }
+    }
+  }
+
+  // Sensor dither
+  float dither = (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * (1.0 / 255.0);
+  color += dither;
+
+  fragColor = vec4(color, 1.0);
+}`;
+
+function compileShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error('Shader compilation error: ' + info);
+  }
+  return shader;
+}
+
+function createProgram(gl, vs, fs) {
+  const vShader = compileShader(gl, gl.VERTEX_SHADER, vs);
+  const fShader = compileShader(gl, gl.FRAGMENT_SHADER, fs);
+  const program = gl.createProgram();
+  gl.attachShader(program, vShader);
+  gl.attachShader(program, fShader);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error('Program link error: ' + info);
+  }
+  return program;
+}
+
+const program = createProgram(gl, vsSource, fsSource);
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+
+const uResolutionLoc = gl.getUniformLocation(program, 'u_resolution');
+const uTimeLoc = gl.getUniformLocation(program, 'u_time');
+const uBlobCountLoc = gl.getUniformLocation(program, 'u_blobCount');
+const uDiffusionLoc = gl.getUniformLocation(program, 'u_diffusion');
+const uIsothermDensityLoc = gl.getUniformLocation(program, 'u_isothermDensity');
+const uBlobsLoc = gl.getUniformLocation(program, 'u_blobs');
+
+const MAX_BLOBS = 24;
+const blobs = [];
+for (let i = 0; i < MAX_BLOBS; i++) {
+  const angle = rng() * Math.PI * 2;
+  const speed = 0.16 + rng() * 0.26;
+  blobs.push({
+    x: (rng() * 2 - 1) * 0.85,
+    y: (rng() * 2 - 1) * 0.65,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: 0.28 + rng() * 0.20,
+    intensity: 0.92 + rng() * 0.45,
+    phaseX: rng() * Math.PI * 2,
+    phaseY: rng() * Math.PI * 2,
+    freqX: 0.5 + rng() * 0.9,
+    freqY: 0.5 + rng() * 0.9
+  });
+}
+
+const blobData = new Float32Array(MAX_BLOBS * 4);
+
+const sourceCountInput = document.getElementById('sourceCount');
+const diffusionRadiusInput = document.getElementById('diffusionRadius');
+const isothermDensityInput = document.getElementById('isothermDensity');
+
+const sourceCountVal = document.getElementById('sourceCountVal');
+const diffusionRadiusVal = document.getElementById('diffusionRadiusVal');
+const isothermDensityVal = document.getElementById('isothermDensityVal');
+
+let sourceCount = parseInt(sourceCountInput.value, 10);
+let diffusionRadius = parseFloat(diffusionRadiusInput.value);
+let isothermDensity = parseFloat(isothermDensityInput.value);
+
+sourceCountInput.addEventListener('input', (e) => {
+  sourceCount = parseInt(e.target.value, 10);
+  sourceCountVal.textContent = sourceCount;
+});
+
+diffusionRadiusInput.addEventListener('input', (e) => {
+  diffusionRadius = parseFloat(e.target.value);
+  diffusionRadiusVal.textContent = diffusionRadius.toFixed(1);
+});
+
+isothermDensityInput.addEventListener('input', (e) => {
+  isothermDensity = parseFloat(e.target.value);
+  isothermDensityVal.textContent = isothermDensity;
+});
+
+const overlay = document.getElementById('overlay');
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+  }
+});
+
+window.addEventListener('pointermove', (e) => {
+  const minDim = Math.min(window.innerWidth, window.innerHeight);
+  const mx = ((e.clientX - window.innerWidth * 0.5) * 2.0) / minDim;
+  const my = (-(e.clientY - window.innerHeight * 0.5) * 2.0) / minDim;
+  blobs[0].x = mx;
+  blobs[0].y = my;
+});
+
+window.addEventListener('pointerdown', (e) => {
+  const minDim = Math.min(window.innerWidth, window.innerHeight);
+  const mx = ((e.clientX - window.innerWidth * 0.5) * 2.0) / minDim;
+  const my = (-(e.clientY - window.innerHeight * 0.5) * 2.0) / minDim;
+  blobs[0].x = mx;
+  blobs[0].y = my;
+  blobs[0].intensity = 1.9;
+});
+
+window.addEventListener('pointerup', () => {
+  blobs[0].intensity = 1.1;
+});
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(window.innerWidth * dpr);
+  const h = Math.floor(window.innerHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+}
+window.addEventListener('resize', resize);
+resize();
+
+let lastTime = performance.now();
+
+function animate(currentTime) {
+  window.__frames++;
+
+  const dt = Math.min((currentTime - lastTime) * 0.001, 0.05) || 0.016;
+  lastTime = currentTime;
+
+  resize();
+
+  const minDim = Math.min(window.innerWidth, window.innerHeight);
+  const boundX = (window.innerWidth / minDim) * 0.92;
+  const boundY = (window.innerHeight / minDim) * 0.92;
+  const tSec = currentTime * 0.001;
+
+  for (let i = 0; i < MAX_BLOBS; i++) {
+    const b = blobs[i];
+    if (i !== 0) {
+      const ax = Math.sin(tSec * b.freqX + b.phaseX) * 0.35;
+      const ay = Math.cos(tSec * b.freqY + b.phaseY) * 0.35;
+
+      b.vx += ax * dt;
+      b.vy += ay * dt;
+
+      const speed = Math.hypot(b.vx, b.vy);
+      if (speed > 0.48) {
+        b.vx = (b.vx / speed) * 0.48;
+        b.vy = (b.vy / speed) * 0.48;
+      } else if (speed < 0.12) {
+        b.vx = (b.vx / (speed || 1)) * 0.12;
+        b.vy = (b.vy / (speed || 1)) * 0.12;
+      }
+
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+
+      if (b.x < -boundX) { b.x = -boundX; b.vx = Math.abs(b.vx); }
+      else if (b.x > boundX) { b.x = boundX; b.vx = -Math.abs(b.vx); }
+
+      if (b.y < -boundY) { b.y = -boundY; b.vy = Math.abs(b.vy); }
+      else if (b.y > boundY) { b.y = boundY; b.vy = -Math.abs(b.vy); }
+    }
+
+    const idx = i * 4;
+    blobData[idx + 0] = b.x;
+    blobData[idx + 1] = b.y;
+    blobData[idx + 2] = b.radius;
+    blobData[idx + 3] = b.intensity;
+  }
+
+  gl.useProgram(program);
+  gl.uniform2f(uResolutionLoc, canvas.width, canvas.height);
+  gl.uniform1f(uTimeLoc, tSec);
+  gl.uniform1i(uBlobCountLoc, sourceCount);
+  gl.uniform1f(uDiffusionLoc, diffusionRadius);
+  gl.uniform1f(uIsothermDensityLoc, isothermDensity);
+  gl.uniform4fv(uBlobsLoc, blobData);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

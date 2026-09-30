@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wave Interference Theremin v2</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0a0e1a;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #glcanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 320px;
+      background: rgba(10, 14, 26, 0.84);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(6, 182, 212, 0.32);
+      border-radius: 8px;
+      padding: 14px 16px;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      z-index: 100;
+      pointer-events: auto;
+    }
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3px;
+    }
+    .hud-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .hud-title::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #06b6d4;
+      box-shadow: 0 0 10px #06b6d4;
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.7; transform: scale(0.9); }
+      50% { opacity: 1.0; transform: scale(1.15); box-shadow: 0 0 14px #06b6d4; }
+    }
+    .status-badge {
+      font-size: 9.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      color: #fbbf24;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .hud-hint {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 5px;
+      margin-bottom: 12px;
+      line-height: 1.4;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 8px;
+    }
+    .hud-readout {
+      display: flex;
+      justify-content: space-between;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 5px;
+      padding: 5px 8px;
+      margin-bottom: 11px;
+      font-size: 10.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .readout-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .readout-lbl {
+      font-size: 8.5px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .readout-val {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .control-row {
+      margin-bottom: 10px;
+    }
+    .control-row:last-child {
+      margin-bottom: 0;
+    }
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: #cbd5e1;
+      margin-bottom: 4px;
+    }
+    .val-display {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #06b6d4;
+      font-weight: 600;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.14);
+      outline: none;
+      cursor: pointer;
+      display: block;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #06b6d4;
+      box-shadow: 0 0 9px #06b6d4;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.22);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: none;
+      background: #06b6d4;
+      box-shadow: 0 0 9px #06b6d4;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas"></canvas>
+
+  <div id="hud">
+    <div class="hud-header">
+      <div class="hud-title">Wave Interference Theremin v2</div>
+      <div id="status-badge" class="status-badge">CHLADNI NODES</div>
+    </div>
+    <div class="hud-hint">Pointer X: Pitch • Pointer Y: Amp • Click/Drag: Acoustic Shockwave • Keys [1–4, Space] • 'H' hides HUD</div>
+    
+    <div class="hud-readout">
+      <div class="readout-item">
+        <span class="readout-lbl">Acoustic Pitch</span>
+        <span id="readout-pitch" class="readout-val">440.0 Hz [A4]</span>
+      </div>
+      <div class="readout-item">
+        <span class="readout-lbl">Harmonic Mode</span>
+        <span id="readout-mode" class="readout-val">1: UNISON</span>
+      </div>
+      <div class="readout-item">
+        <span class="readout-lbl">Phosphor Grains</span>
+        <span id="readout-grains" class="readout-val">32,768</span>
+      </div>
+    </div>
+
+    <div class="control-row">
+      <div class="label-row">
+        <span>Nodal Trapping Force</span>
+        <span id="val-trap" class="val-display">1.6</span>
+      </div>
+      <input type="range" id="slider-trap" min="0.2" max="3.0" step="0.1" value="1.6">
+    </div>
+
+    <div class="control-row">
+      <div class="label-row">
+        <span>Chromatic Dispersion</span>
+        <span id="val-disp" class="val-display">1.4</span>
+      </div>
+      <input type="range" id="slider-disp" min="0.2" max="2.5" step="0.1" value="1.4">
+    </div>
+
+    <div class="control-row">
+      <div class="label-row">
+        <span>Spatial Frequency</span>
+        <span id="val-freq" class="val-display">2.8</span>
+      </div>
+      <input type="range" id="slider-freq" min="1.0" max="6.0" step="0.1" value="2.8">
+    </div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    // Seeded PRNG initialization (Mulberry32)
+    const urlParams = new URLSearchParams(window.location.search);
+    let seedVal = parseInt(urlParams.get('seed') || '1', 10);
+    if (isNaN(seedVal)) seedVal = 1;
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rng = mulberry32(seedVal);
+
+    // Initial procedural parameters from seed
+    const initialPhase0 = rng() * Math.PI * 2.0;
+    const initialPhase1 = rng() * Math.PI * 2.0;
+    const initialPhase2 = rng() * Math.PI * 2.0;
+    const lissajousRatioA = 0.85 + rng() * 0.35;
+    const lissajousRatioB = 0.75 + rng() * 0.45;
+    const planeWaveAngleSeed = rng() * Math.PI * 2.0;
+
+    // WebGL2 Context Setup
+    const canvas = document.getElementById('glcanvas');
+    const gl = canvas.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' });
+    if (!gl) {
+      throw new Error("WebGL2 not supported on this device/browser.");
+    }
+
+    // Helper: Compile & Link with strict error checking
+    function createShader(glCtx, type, source) {
+      const shader = glCtx.createShader(type);
+      glCtx.shaderSource(shader, source);
+      glCtx.compileShader(shader);
+      if (!glCtx.getShaderParameter(shader, glCtx.COMPILE_STATUS)) {
+        const info = glCtx.getShaderInfoLog(shader);
+        glCtx.deleteShader(shader);
+        throw new Error("Shader compile failed: " + info);
+      }
+      return shader;
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. Background Liquid Light Membrane Shader
+    // -------------------------------------------------------------------------
+    const bgVsSource = `#version 300 es
+    precision highp float;
+    in vec2 a_pos;
+    out vec2 v_uv;
+    void main() {
+      v_uv = a_pos * 0.5 + 0.5;
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+    }`;
+
+    const bgFsSource = `#version 300 es
+    precision highp float;
+
+    in vec2 v_uv;
+    out vec4 fragColor;
+
+    uniform vec2 u_resolution;
+    uniform float u_time;
+    uniform vec2 u_e0;
+    uniform vec2 u_e1;
+    uniform vec2 u_e2;
+    uniform vec3 u_freqRatio;
+    uniform vec3 u_phases;
+    uniform vec3 u_weights;
+    uniform float u_baseFreq;
+    uniform float u_damp;
+    uniform float u_dispersion;
+    uniform float u_amplitude;
+    uniform float u_planeAngle;
+    uniform float u_planeAmp;
+    uniform vec2 u_pulseCenter;
+    uniform float u_pulseProgress;
+    uniform float u_pulseIntensity;
+    uniform float u_resonance;
+    uniform float u_pitchFactor;
+
+    // Evaluates acoustic interference field for a specific chromatic scale factor
+    float evalWave(vec2 p, float k_scale) {
+      float k = u_baseFreq * 13.5 * k_scale;
+      float sum = 0.0;
+      
+      // Emitter 0 (primary theremin probe)
+      float d0 = length(p - u_e0) + 0.001;
+      float att0 = 1.0 / (1.0 + u_damp * d0 * 3.6);
+      float ph0 = k * u_freqRatio.x * d0 - u_time * 3.3 + u_phases.x;
+      float w0 = sin(ph0) + 0.26 * sin(2.0 * ph0);
+      sum += u_weights.x * att0 * w0;
+      
+      // Emitter 1 (secondary satellite)
+      float d1 = length(p - u_e1) + 0.001;
+      float att1 = 1.0 / (1.0 + u_damp * d1 * 3.6);
+      float ph1 = k * u_freqRatio.y * d1 - u_time * 3.3 + u_phases.y;
+      float w1 = sin(ph1) + 0.26 * sin(2.0 * ph1);
+      sum += u_weights.y * att1 * w1;
+      
+      // Emitter 2 (tertiary satellite)
+      float d2 = length(p - u_e2) + 0.001;
+      float att2 = 1.0 / (1.0 + u_damp * d2 * 3.6);
+      float ph2 = k * u_freqRatio.z * d2 - u_time * 3.3 + u_phases.z;
+      float w2 = sin(ph2) + 0.26 * sin(2.0 * ph2);
+      sum += u_weights.z * att2 * w2;
+      
+      // Ambient planar carrier wave
+      vec2 pdir = vec2(cos(u_planeAngle), sin(u_planeAngle));
+      float planeDist = dot(p, pdir);
+      float planePh = k * 0.72 * planeDist - u_time * 2.2;
+      sum += u_planeAmp * sin(planePh);
+      
+      // Acoustic shockwave pulse
+      if (u_pulseIntensity > 0.005) {
+        float dp = length(p - u_pulseCenter);
+        float ringDist = abs(dp - u_pulseProgress);
+        float ringEnv = exp(-ringDist * ringDist * 52.0);
+        float ringWave = sin(k * 1.8 * (dp - u_pulseProgress));
+        sum += ringEnv * ringWave * u_pulseIntensity * 2.2;
+      }
+      
+      return sum * u_amplitude;
+    }
+
+    void main() {
+      vec2 p = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+      
+      // Chromatic dispersion evaluation across broad spectral detuning
+      float dispStrength = u_dispersion * 0.055;
+      float fR = evalWave(p, 1.0 - dispStrength);
+      float fG = evalWave(p, 1.0);
+      float fB = evalWave(p, 1.0 + dispStrength);
+      
+      float totW = abs(u_weights.x) + abs(u_weights.y) + abs(u_weights.z) + u_planeAmp + 0.001;
+      vec3 waveNorm = vec3(fR, fG, fB) / totW;
+      
+      // Screen-space gradients for liquid surface normal & crisp contours
+      vec2 gradG = vec2(dFdx(waveNorm.y), dFdy(waveNorm.y));
+      float gradLen = length(gradG) + 1e-5;
+      
+      // Liquid light surface normal & dual-source specular highlights
+      vec3 normal = normalize(vec3(-gradG * 14.0, 1.0));
+      vec3 light1 = normalize(vec3(0.35, 0.55, 0.75));
+      vec3 light2 = normalize(vec3(-0.45, -0.35, 0.65));
+      vec3 viewDir = vec3(0.0, 0.0, 1.0);
+      
+      vec3 h1 = normalize(light1 + viewDir);
+      float spec1 = pow(max(0.0, dot(normal, h1)), 24.0);
+      vec3 h2 = normalize(light2 + viewDir);
+      float spec2 = pow(max(0.0, dot(normal, h2)), 14.0);
+      
+      // Crisp anti-aliased isophote contour lines
+      float isoStep = 0.22;
+      float isoCoord = waveNorm.y / isoStep;
+      float distToIso = abs(fract(isoCoord + 0.5) - 0.5) * isoStep;
+      float isophote = 1.0 - smoothstep(0.0, 1.25, distToIso / gradLen);
+      
+      // Destructive interference amber nodal null-lines (A = 0)
+      float nodalPixelDist = abs(waveNorm.y) / gradLen;
+      float nodalLine = 1.0 - smoothstep(0.0, 1.85, nodalPixelDist);
+      
+      // Liquid Palette
+      vec3 cDeep = vec3(0.035, 0.051, 0.098);    // Deep oceanic background
+      vec3 cCobalt = vec3(0.118, 0.227, 0.541);  // Rich Cobalt
+      vec3 cCyan = vec3(0.024, 0.714, 0.831);    // Phosphor Cyan
+      vec3 cAmber = vec3(0.961, 0.620, 0.043);   // Radiant Amber nodal null
+      vec3 cWhite = vec3(0.973, 0.980, 0.988);   // Specular peak
+      
+      // Fluid energy mapping
+      float eG = waveNorm.y * waveNorm.y;
+      vec3 col = cDeep;
+      col = mix(col, cCobalt, smoothstep(0.02, 0.38, eG));
+      col = mix(col, cCyan, smoothstep(0.24, 0.78, eG) * smoothstep(-0.25, 0.35, waveNorm.y));
+      col = mix(col, cAmber * 0.95, smoothstep(0.65, 1.25, eG));
+      col = mix(col, cWhite, smoothstep(1.05, 1.70, eG * (1.0 + u_resonance * 0.55)));
+      
+      // Chromatic dispersion shimmer along steep phase boundaries
+      vec3 dispersion = vec3(
+        smoothstep(0.12, 0.82, waveNorm.x * waveNorm.x),
+        smoothstep(0.12, 0.82, waveNorm.y * waveNorm.y),
+        smoothstep(0.12, 0.82, waveNorm.z * waveNorm.z)
+      );
+      vec3 dispColor = vec3(dispersion.x * 0.9, dispersion.y * 0.5, dispersion.z * 1.2);
+      col += (dispColor - dispersion.y) * (0.42 * u_dispersion);
+      
+      // Liquid light specular shimmer
+      col += cCyan * spec1 * 0.45 + cWhite * (spec1 * spec1) * 0.55 + cAmber * spec2 * 0.22;
+      
+      // Fill inter-contour voids with sub-harmonic acoustic micro-waves
+      float cavityMicro = sin(length(p) * 22.0 - u_time * 2.8) * 0.035;
+      col += cCobalt * max(0.0, cavityMicro) * (1.0 - smoothstep(0.0, 0.4, eG));
+      
+      // Crisp anti-aliased isophote contour overlay
+      col = mix(col, cCyan * 1.5, isophote * 0.48);
+      
+      // Amber nodal null-lines (visual anchor for Chladni grain trapping)
+      col = mix(col, cAmber * 1.7, nodalLine * 0.55);
+      
+      // Etched Laboratory Pitch Register Ticks across X-axis
+      float aspect = u_resolution.x / min(u_resolution.x, u_resolution.y);
+      float normX = (p.x / aspect) * 0.5 + 0.5;
+      float octaveMark = abs(fract(normX * 4.0) - 0.5);
+      float octaveLine = smoothstep(0.02, 0.005, octaveMark) * 0.08;
+      col += cCyan * octaveLine * (1.0 - smoothstep(0.7, 1.4, length(p)));
+      
+      // Emitter Probes & Dynamic Theremin Reticles
+      for (int i = 0; i < 3; i++) {
+        vec2 ePos = (i == 0) ? u_e0 : ((i == 1) ? u_e1 : u_e2);
+        float d = length(p - ePos);
+        float isPointer = (i == 0) ? 1.0 : 0.0;
+        
+        float glowCore = exp(-d * d * mix(3200.0, 1600.0, isPointer));
+        
+        // Dynamic acoustic response waveform ring around primary probe
+        float theta = atan(p.y - ePos.y, p.x - ePos.x);
+        float ringBase = mix(0.032, 0.054, isPointer);
+        float ringWave = isPointer * 0.004 * sin(theta * 10.0 - u_time * 14.0) * (1.0 + u_resonance * 2.0);
+        float rDist = abs(d - (ringBase + ringWave));
+        float ringLine = exp(-rDist * rDist * 18000.0);
+        
+        // Caliper crosshairs
+        float cross = 0.0;
+        if (isPointer > 0.5) {
+          vec2 dp = abs(p - ePos);
+          if ((dp.x < 0.002 && dp.y < 0.085 && dp.y > 0.02) || 
+              (dp.y < 0.002 && dp.x < 0.085 && dp.x > 0.02)) {
+            cross = 0.85;
+          }
+        }
+        
+        vec3 probeColor = mix(cCyan, cAmber, isPointer);
+        col += probeColor * glowCore * 1.45 + cWhite * (ringLine + cross) * 0.85;
+      }
+      
+      // Soft vignette & analog dither
+      float vig = 1.0 - smoothstep(0.75, 1.55, length(p));
+      col *= vig;
+      float dither = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+      col += dither * (1.0 / 255.0);
+      
+      fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }`;
+
+    const bgProgram = gl.createProgram();
+    const bgVs = createShader(gl, gl.VERTEX_SHADER, bgVsSource);
+    const bgFs = createShader(gl, gl.FRAGMENT_SHADER, bgFsSource);
+    gl.attachShader(bgProgram, bgVs);
+    gl.attachShader(bgProgram, bgFs);
+    gl.linkProgram(bgProgram);
+    if (!gl.getProgramParameter(bgProgram, gl.LINK_STATUS)) {
+      throw new Error("Background Program link failed: " + gl.getProgramInfoLog(bgProgram));
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Chladni Grain Particle Simulation (Transform Feedback)
+    // -------------------------------------------------------------------------
+    const simVsSource = `#version 300 es
+    precision highp float;
+
+    in vec2 a_pos;
+    in vec2 a_vel;
+
+    out vec2 v_pos;
+    out vec2 v_vel;
+
+    uniform float u_dt;
+    uniform float u_time;
+    uniform float u_aspect;
+    uniform vec2 u_e0;
+    uniform vec2 u_e1;
+    uniform vec2 u_e2;
+    uniform vec3 u_freqRatio;
+    uniform vec3 u_phases;
+    uniform vec3 u_weights;
+    uniform float u_baseFreq;
+    uniform float u_damp;
+    uniform float u_amplitude;
+    uniform float u_planeAngle;
+    uniform float u_planeAmp;
+    uniform float u_trapForce;
+    uniform vec2 u_pulseCenter;
+    uniform float u_pulseProgress;
+    uniform float u_pulseIntensity;
+    uniform vec2 u_mousePos;
+    uniform vec2 u_mouseVel;
+    uniform float u_userActive;
+
+    float evalField(vec2 p) {
+      float k = u_baseFreq * 13.5;
+      float sum = 0.0;
+      
+      float d0 = length(p - u_e0) + 0.001;
+      float att0 = 1.0 / (1.0 + u_damp * d0 * 3.6);
+      sum += u_weights.x * att0 * sin(k * u_freqRatio.x * d0 - u_time * 3.3 + u_phases.x);
+      
+      float d1 = length(p - u_e1) + 0.001;
+      float att1 = 1.0 / (1.0 + u_damp * d1 * 3.6);
+      sum += u_weights.y * att1 * sin(k * u_freqRatio.y * d1 - u_time * 3.3 + u_phases.y);
+      
+      float d2 = length(p - u_e2) + 0.001;
+      float att2 = 1.0 / (1.0 + u_damp * d2 * 3.6);
+      sum += u_weights.z * att2 * sin(k * u_freqRatio.z * d2 - u_time * 3.3 + u_phases.z);
+      
+      vec2 pdir = vec2(cos(u_planeAngle), sin(u_planeAngle));
+      sum += u_planeAmp * sin(k * 0.72 * dot(p, pdir) - u_time * 2.2);
+      
+      return sum * u_amplitude;
+    }
+
+    float hash12(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    vec2 hash22(vec2 p) {
+      float n = hash12(p);
+      return vec2(cos(n * 6.2831853), sin(n * 6.2831853));
+    }
+
+    void main() {
+      vec2 pos = a_pos;
+      vec2 vel = a_vel;
+      
+      float totW = abs(u_weights.x) + abs(u_weights.y) + abs(u_weights.z) + u_planeAmp + 0.001;
+      float wave = evalField(pos) / totW;
+      
+      // Numerical gradient of wave amplitude to find nodal lines (amplitude = 0)
+      const float eps = 0.006;
+      float waveX = evalField(pos + vec2(eps, 0.0)) / totW;
+      float waveY = evalField(pos + vec2(0.0, eps)) / totW;
+      vec2 grad = vec2(waveX - wave, waveY - wave) / eps;
+      
+      // Chladni Trapping Force: Particles in vibrating zones are vigorously pushed toward null lines
+      // Acceleration along -grad(amp^2) pulls grains into A = 0
+      vec2 f_trap = -grad * clamp(wave * 22.0, -3.5, 3.5) * u_trapForce;
+      
+      // Brownian Antinodal Jitter: High amplitude plate vibration vigorously bounces grains away
+      vec2 jitter = hash22(pos * 187.3 + vec2(u_time * 3.7, float(gl_VertexID) * 0.017)) * abs(wave) * 1.8;
+      
+      vec2 accel = f_trap + jitter;
+      
+      // Acoustic shockwave scatter pulse
+      if (u_pulseIntensity > 0.005) {
+        vec2 toP = pos - u_pulseCenter;
+        float d = length(toP);
+        float ringDist = abs(d - u_pulseProgress);
+        float shock = exp(-ringDist * ringDist * 54.0) * u_pulseIntensity;
+        vec2 shockDir = (d > 0.001) ? (toP / d) : vec2(0.0, 1.0);
+        vec2 swirlDir = vec2(-shockDir.y, shockDir.x);
+        accel += (shockDir * 32.0 + swirlDir * 16.0) * shock;
+      }
+      
+      // Pointer drag impulse & acoustic wake
+      if (u_userActive > 0.1) {
+        vec2 toMouse = pos - u_mousePos;
+        float dMouse = length(toMouse);
+        float mouseInfluence = exp(-dMouse * dMouse * 22.0) * u_userActive;
+        accel += u_mouseVel * mouseInfluence * 26.0;
+        vec2 probeVortex = vec2(-toMouse.y, toMouse.x) / (dMouse + 0.06);
+        accel += probeVortex * mouseInfluence * 10.0;
+      }
+      
+      // Viscous acoustic damping
+      vel = (vel + accel * u_dt) * pow(0.86, u_dt * 60.0);
+      pos = pos + vel * u_dt;
+      
+      // Boundary reflection & gentle wrap
+      float boundX = u_aspect * 1.05;
+      float boundY = 1.05;
+      if (abs(pos.x) > boundX || abs(pos.y) > boundY) {
+        float rSeed = hash12(pos + vec2(u_time, float(gl_VertexID)));
+        pos = vec2((rSeed - 0.5) * 2.0 * boundX * 0.9, (hash12(vec2(rSeed, u_time)) - 0.5) * 1.9);
+        vel = vec2(0.0);
+      }
+      
+      v_pos = pos;
+      v_vel = vel;
+    }`;
+
+    const simFsSource = `#version 300 es
+    precision highp float;
+    void main() {}`;
+
+    const simProgram = gl.createProgram();
+    const simVs = createShader(gl, gl.VERTEX_SHADER, simVsSource);
+    const simFs = createShader(gl, gl.FRAGMENT_SHADER, simFsSource);
+    gl.attachShader(simProgram, simVs);
+    gl.attachShader(simProgram, simFs);
+    gl.transformFeedbackVaryings(simProgram, ['v_pos', 'v_vel'], gl.INTERLEAVED_ATTRIBS);
+    gl.bindAttribLocation(simProgram, 0, 'a_pos');
+    gl.bindAttribLocation(simProgram, 1, 'a_vel');
+    gl.linkProgram(simProgram);
+    if (!gl.getProgramParameter(simProgram, gl.LINK_STATUS)) {
+      throw new Error("Sim Program link failed: " + gl.getProgramInfoLog(simProgram));
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Phosphor Grain Particle Render Shader
+    // -------------------------------------------------------------------------
+    const partVsSource = `#version 300 es
+    precision highp float;
+
+    in vec2 a_pos;
+    in vec2 a_vel;
+
+    out float v_speed;
+
+    uniform float u_aspect;
+    uniform float u_dpr;
+
+    void main() {
+      v_speed = length(a_vel);
+      gl_Position = vec4(a_pos.x / u_aspect, a_pos.y, 0.0, 1.0);
+      // Trapped nodal grains are compact dots; excited scattering grains flare up
+      gl_PointSize = clamp((2.2 + smoothstep(0.0, 0.7, v_speed) * 3.8), 1.8, 6.5) * u_dpr;
+    }`;
+
+    const partFsSource = `#version 300 es
+    precision highp float;
+
+    in float v_speed;
+    out vec4 fragColor;
+
+    void main() {
+      vec2 coord = gl_PointCoord - vec2(0.5);
+      float distSq = dot(coord, coord);
+      if (distSq > 0.25) discard;
+      
+      float core = exp(-distSq * 30.0);
+      float halo = exp(-distSq * 8.5) * 0.55;
+      float alpha = core + halo;
+      
+      // Color transition:
+      // Trapped resting on nodal line: Radiant warm amber gold
+      // Excited/drifting: High-luminance phosphor cyan
+      // Shockwave scatter: Incandescent white
+      vec3 cAmber = vec3(0.98, 0.70, 0.14);
+      vec3 cCyan = vec3(0.08, 0.82, 0.94);
+      vec3 cWhite = vec3(0.98, 0.99, 1.0);
+      
+      vec3 col = mix(cAmber, cCyan, smoothstep(0.015, 0.28, v_speed));
+      col = mix(col, cWhite, smoothstep(0.35, 1.10, v_speed));
+      
+      fragColor = vec4(col * alpha * 0.92, alpha);
+    }`;
+
+    const partProgram = gl.createProgram();
+    const partVs = createShader(gl, gl.VERTEX_SHADER, partVsSource);
+    const partFs = createShader(gl, gl.FRAGMENT_SHADER, partFsSource);
+    gl.attachShader(partProgram, partVs);
+    gl.attachShader(partProgram, partFs);
+    gl.bindAttribLocation(partProgram, 0, 'a_pos');
+    gl.bindAttribLocation(partProgram, 1, 'a_vel');
+    gl.linkProgram(partProgram);
+    if (!gl.getProgramParameter(partProgram, gl.LINK_STATUS)) {
+      throw new Error("Particle Render Program link failed: " + gl.getProgramInfoLog(partProgram));
+    }
+
+    // -------------------------------------------------------------------------
+    // Geometry & Ping-Pong Buffers Setup
+    // -------------------------------------------------------------------------
+    // Fullscreen Quad VAO
+    const quadVAO = gl.createVertexArray();
+    gl.bindVertexArray(quadVAO);
+    const quadVBO = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+      -1,  1,
+       1, -1,
+       1,  1
+    ]), gl.STATIC_DRAW);
+    const bgPosLoc = gl.getAttribLocation(bgProgram, 'a_pos');
+    gl.enableVertexAttribArray(bgPosLoc);
+    gl.vertexAttribPointer(bgPosLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    // Particle Buffers (32,768 microscopic phosphor grains)
+    const PARTICLE_COUNT = 32768;
+    const particleData = new Float32Array(PARTICLE_COUNT * 4);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const angle = rng() * Math.PI * 2.0;
+      const radius = Math.sqrt(rng()) * 0.95;
+      particleData[i * 4 + 0] = Math.cos(angle) * radius * 1.6; // pos.x
+      particleData[i * 4 + 1] = Math.sin(angle) * radius;       // pos.y
+      particleData[i * 4 + 2] = 0.0;                             // vel.x
+      particleData[i * 4 + 3] = 0.0;                             // vel.y
+    }
+
+    const bufA = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufA);
+    gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_COPY);
+
+    const bufB = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufB);
+    gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_COPY);
+
+    // Particle VAO A
+    const vaoA = gl.createVertexArray();
+    gl.bindVertexArray(vaoA);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufA);
+    gl.enableVertexAttribArray(0); // a_pos
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1); // a_vel
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+
+    // Particle VAO B
+    const vaoB = gl.createVertexArray();
+    gl.bindVertexArray(vaoB);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufB);
+    gl.enableVertexAttribArray(0); // a_pos
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1); // a_vel
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // Uniform Caches
+    const bgUniforms = {
+      u_resolution: gl.getUniformLocation(bgProgram, 'u_resolution'),
+      u_time: gl.getUniformLocation(bgProgram, 'u_time'),
+      u_e0: gl.getUniformLocation(bgProgram, 'u_e0'),
+      u_e1: gl.getUniformLocation(bgProgram, 'u_e1'),
+      u_e2: gl.getUniformLocation(bgProgram, 'u_e2'),
+      u_freqRatio: gl.getUniformLocation(bgProgram, 'u_freqRatio'),
+      u_phases: gl.getUniformLocation(bgProgram, 'u_phases'),
+      u_weights: gl.getUniformLocation(bgProgram, 'u_weights'),
+      u_baseFreq: gl.getUniformLocation(bgProgram, 'u_baseFreq'),
+      u_damp: gl.getUniformLocation(bgProgram, 'u_damp'),
+      u_dispersion: gl.getUniformLocation(bgProgram, 'u_dispersion'),
+      u_amplitude: gl.getUniformLocation(bgProgram, 'u_amplitude'),
+      u_planeAngle: gl.getUniformLocation(bgProgram, 'u_planeAngle'),
+      u_planeAmp: gl.getUniformLocation(bgProgram, 'u_planeAmp'),
+      u_pulseCenter: gl.getUniformLocation(bgProgram, 'u_pulseCenter'),
+      u_pulseProgress: gl.getUniformLocation(bgProgram, 'u_pulseProgress'),
+      u_pulseIntensity: gl.getUniformLocation(bgProgram, 'u_pulseIntensity'),
+      u_resonance: gl.getUniformLocation(bgProgram, 'u_resonance'),
+      u_pitchFactor: gl.getUniformLocation(bgProgram, 'u_pitchFactor')
+    };
+
+    const simUniforms = {
+      u_dt: gl.getUniformLocation(simProgram, 'u_dt'),
+      u_time: gl.getUniformLocation(simProgram, 'u_time'),
+      u_aspect: gl.getUniformLocation(simProgram, 'u_aspect'),
+      u_e0: gl.getUniformLocation(simProgram, 'u_e0'),
+      u_e1: gl.getUniformLocation(simProgram, 'u_e1'),
+      u_e2: gl.getUniformLocation(simProgram, 'u_e2'),
+      u_freqRatio: gl.getUniformLocation(simProgram, 'u_freqRatio'),
+      u_phases: gl.getUniformLocation(simProgram, 'u_phases'),
+      u_weights: gl.getUniformLocation(simProgram, 'u_weights'),
+      u_baseFreq: gl.getUniformLocation(simProgram, 'u_baseFreq'),
+      u_damp: gl.getUniformLocation(simProgram, 'u_damp'),
+      u_amplitude: gl.getUniformLocation(simProgram, 'u_amplitude'),
+      u_planeAngle: gl.getUniformLocation(simProgram, 'u_planeAngle'),
+      u_planeAmp: gl.getUniformLocation(simProgram, 'u_planeAmp'),
+      u_trapForce: gl.getUniformLocation(simProgram, 'u_trapForce'),
+      u_pulseCenter: gl.getUniformLocation(simProgram, 'u_pulseCenter'),
+      u_pulseProgress: gl.getUniformLocation(simProgram, 'u_pulseProgress'),
+      u_pulseIntensity: gl.getUniformLocation(simProgram, 'u_pulseIntensity'),
+      u_mousePos: gl.getUniformLocation(simProgram, 'u_mousePos'),
+      u_mouseVel: gl.getUniformLocation(simProgram, 'u_mouseVel'),
+      u_userActive: gl.getUniformLocation(simProgram, 'u_userActive')
+    };
+
+    const partUniforms = {
+      u_aspect: gl.getUniformLocation(partProgram, 'u_aspect'),
+      u_dpr: gl.getUniformLocation(partProgram, 'u_dpr')
+    };
+
+    // Resize handling (capped at DPR = 2)
+    let dpr = 1;
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.floor(window.innerWidth * dpr);
+      const h = Math.floor(window.innerHeight * dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // UI Sliders and Controls
+    const sliderTrap = document.getElementById('slider-trap');
+    const sliderDisp = document.getElementById('slider-disp');
+    const sliderFreq = document.getElementById('slider-freq');
+    const valTrap = document.getElementById('val-trap');
+    const valDisp = document.getElementById('val-disp');
+    const valFreq = document.getElementById('val-freq');
+
+    const readoutPitch = document.getElementById('readout-pitch');
+    const readoutMode = document.getElementById('readout-mode');
+    const statusBadge = document.getElementById('status-badge');
+
+    sliderTrap.addEventListener('input', (e) => {
+      valTrap.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+    sliderDisp.addEventListener('input', (e) => {
+      valDisp.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+    sliderFreq.addEventListener('input', (e) => {
+      valFreq.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+
+    // Instrument state
+    const mouse = {
+      x: 0.0,
+      y: 0.0,
+      vx: 0.0,
+      vy: 0.0,
+      lastX: 0.0,
+      lastY: 0.0,
+      isDown: false,
+      pitchFactor: 1.0,
+      ampFactor: 1.0
+    };
+    let userInfluence = 0.0;
+    let lastInteractionTime = -10000;
+    const e0 = { x: 0.0, y: 0.0 };
+    const e1 = { x: 0.0, y: 0.0 };
+    const e2 = { x: 0.0, y: 0.0 };
+
+    let pulseCenter = [0.0, 0.0];
+    let pulseProgress = 0.0;
+    let pulseIntensity = 0.0;
+    let resonance = 0.0;
+
+    // Harmonic interval modes
+    const MODES = [
+      { name: "1: UNISON", ratios: [1.0, 1.0, 1.0], weights: [1.0, 0.85, 0.65] },
+      { name: "2: FIFTH (3:2)", ratios: [1.0, 1.5, 0.75], weights: [1.0, 0.90, 0.70] },
+      { name: "3: CASCADE", ratios: [1.0, 2.0, 3.0], weights: [1.0, 0.75, 0.55] },
+      { name: "4: QUADRUPOLE", ratios: [1.0, 1.0, 2.0], weights: [1.0, -1.0, 0.80] }
+    ];
+    let currentMode = 0;
+    let activeRatios = [1.0, 1.0, 1.0];
+    let activeWeights = [1.0, 0.85, 0.65];
+
+    function setHarmonicMode(idx) {
+      if (idx < 0 || idx >= MODES.length) return;
+      currentMode = idx;
+      activeRatios = MODES[idx].ratios.slice();
+      activeWeights = MODES[idx].weights.slice();
+      readoutMode.textContent = MODES[idx].name;
+      triggerPulse();
+    }
+
+    function triggerPulse() {
+      pulseCenter[0] = e0.x;
+      pulseCenter[1] = e0.y;
+      pulseProgress = 0.0;
+      pulseIntensity = 1.0;
+      resonance = 1.0;
+      statusBadge.textContent = "SHOCKWAVE";
+      statusBadge.style.color = "#38bdf8";
+      statusBadge.style.borderColor = "rgba(56, 189, 248, 0.6)";
+      setTimeout(() => {
+        statusBadge.textContent = "CHLADNI NODES";
+        statusBadge.style.color = "#fbbf24";
+        statusBadge.style.borderColor = "rgba(245, 158, 11, 0.45)";
+      }, 700);
+    }
+
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    function hzToNote(hz) {
+      const midi = Math.round(69 + 12 * Math.log2(hz / 440));
+      const note = NOTE_NAMES[(midi % 12 + 12) % 12];
+      const oct = Math.floor(midi / 12) - 1;
+      return `${note}${oct}`;
+    }
+
+    function updatePointer(clientX, clientY) {
+      const minDim = Math.min(window.innerWidth, window.innerHeight);
+      const currX = (clientX - window.innerWidth * 0.5) / minDim;
+      const currY = (window.innerHeight * 0.5 - clientY) / minDim;
+
+      mouse.vx = (currX - mouse.lastX) * 45.0;
+      mouse.vy = (currY - mouse.lastY) * 45.0;
+      mouse.lastX = currX;
+      mouse.lastY = currY;
+
+      mouse.x = currX;
+      mouse.y = currY;
+
+      const normX = clientX / Math.max(1, window.innerWidth);
+      mouse.pitchFactor = Math.pow(2.0, (normX - 0.5) * 2.2);
+
+      const normY = 1.0 - (clientY / Math.max(1, window.innerHeight));
+      mouse.ampFactor = 0.5 + normY * 1.1;
+
+      userInfluence = 1.0;
+      lastInteractionTime = performance.now();
+
+      const baseHz = 220 * parseFloat(sliderFreq.value) / 2.8;
+      const currentHz = baseHz * mouse.pitchFactor;
+      readoutPitch.textContent = `${currentHz.toFixed(1)} Hz [${hzToNote(currentHz)}]`;
+    }
+
+    window.addEventListener('pointerdown', (e) => {
+      mouse.isDown = true;
+      mouse.lastX = (e.clientX - window.innerWidth * 0.5) / Math.min(window.innerWidth, window.innerHeight);
+      mouse.lastY = (window.innerHeight * 0.5 - e.clientY) / Math.min(window.innerWidth, window.innerHeight);
+      updatePointer(e.clientX, e.clientY);
+      triggerPulse();
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      updatePointer(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('pointerup', () => {
+      mouse.isDown = false;
+      mouse.vx = 0.0;
+      mouse.vy = 0.0;
+    });
+
+    window.addEventListener('pointercancel', () => {
+      mouse.isDown = false;
+    });
+
+    // Keyboard controls
+    const hud = document.getElementById('hud');
+    let hudVisible = true;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        hudVisible = !hudVisible;
+        hud.style.display = hudVisible ? 'block' : 'none';
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        triggerPulse();
+      } else if (e.key === '1') {
+        setHarmonicMode(0);
+      } else if (e.key === '2') {
+        setHarmonicMode(1);
+      } else if (e.key === '3') {
+        setHarmonicMode(2);
+      } else if (e.key === '4') {
+        setHarmonicMode(3);
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // Main Animation & Simulation Loop
+    // -------------------------------------------------------------------------
+    let lastTime = performance.now();
+    let totalTime = 0;
+    let currentBufferSource = 0; // Ping-pong index
+
+    function render(now) {
+      window.__frames++;
+
+      const dt = Math.min((now - lastTime) * 0.001, 0.045);
+      lastTime = now;
+      totalTime += dt;
+
+      // Autonomic Lissajous orbital motions
+      e1.x = Math.sin(totalTime * 0.45 + initialPhase1) * 0.58;
+      e1.y = Math.cos(totalTime * 0.62 + initialPhase1) * 0.42;
+
+      e2.x = Math.cos(totalTime * 0.38 + initialPhase2) * 0.68;
+      e2.y = Math.sin(totalTime * 0.74 + initialPhase2) * 0.36;
+
+      // Idle relaxation for primary theremin probe
+      const fA = 0.52 * lissajousRatioA;
+      const fB = 0.68 * lissajousRatioB;
+      const autoX0 = Math.sin(totalTime * fA + initialPhase0) * 0.38;
+      const autoY0 = Math.cos(totalTime * fB + initialPhase0 * 1.3) * 0.28;
+
+      if (now - lastInteractionTime > 2600) {
+        userInfluence = Math.max(0.0, userInfluence - dt * 0.45);
+        const autoHz = (220 * parseFloat(sliderFreq.value) / 2.8) * Math.pow(2.0, autoX0 * 1.1);
+        readoutPitch.textContent = `${autoHz.toFixed(1)} Hz [${hzToNote(autoHz)}]`;
+      }
+
+      const targetX = (1.0 - userInfluence) * autoX0 + userInfluence * mouse.x;
+      const targetY = (1.0 - userInfluence) * autoY0 + userInfluence * mouse.y;
+
+      const spring = 1.0 - Math.exp(-dt * 18.0);
+      e0.x += (targetX - e0.x) * spring;
+      e0.y += (targetY - e0.y) * spring;
+
+      // Shockwave pulse expansion
+      if (pulseIntensity > 0.001) {
+        pulseProgress += dt * 1.85;
+        pulseIntensity = Math.max(0.0, pulseIntensity - dt * 0.95);
+      }
+
+      // Resonance decay
+      resonance = Math.max(0.0, resonance - dt * 1.6);
+      if (mouse.isDown) {
+        resonance = Math.min(1.0, resonance + dt * 4.5);
+      }
+
+      // Read live slider values
+      const trapVal = parseFloat(sliderTrap.value);
+      const dispVal = parseFloat(sliderDisp.value);
+      const baseFreq = parseFloat(sliderFreq.value);
+
+      const effectivePitch = (1.0 - userInfluence) + userInfluence * mouse.pitchFactor;
+      const effectiveAmp = (1.0 - userInfluence) + userInfluence * mouse.ampFactor;
+      const effectiveFreq = baseFreq * effectivePitch;
+      const aspect = canvas.width / canvas.height;
+
+      // Ping-pong selection: Source VAO vs Target Buffer
+      const readVAO = (currentBufferSource === 0) ? vaoA : vaoB;
+      const writeBuf = (currentBufferSource === 0) ? bufB : bufA;
+      const renderVAO = (currentBufferSource === 0) ? vaoB : vaoA;
+
+      // -----------------------------------------------------------------------
+      // Step 1: Simulate Phosphor Grains via Transform Feedback
+      // -----------------------------------------------------------------------
+      gl.useProgram(simProgram);
+      gl.uniform1f(simUniforms.u_dt, dt);
+      gl.uniform1f(simUniforms.u_time, totalTime);
+      gl.uniform1f(simUniforms.u_aspect, aspect);
+      gl.uniform2f(simUniforms.u_e0, e0.x, e0.y);
+      gl.uniform2f(simUniforms.u_e1, e1.x, e1.y);
+      gl.uniform2f(simUniforms.u_e2, e2.x, e2.y);
+      gl.uniform3f(simUniforms.u_freqRatio, activeRatios[0], activeRatios[1], activeRatios[2]);
+      gl.uniform3f(simUniforms.u_phases, initialPhase0, initialPhase1, initialPhase2);
+      gl.uniform3f(simUniforms.u_weights, activeWeights[0], activeWeights[1], activeWeights[2]);
+      gl.uniform1f(simUniforms.u_baseFreq, effectiveFreq);
+      gl.uniform1f(simUniforms.u_damp, 0.25);
+      gl.uniform1f(simUniforms.u_amplitude, effectiveAmp);
+      gl.uniform1f(simUniforms.u_planeAngle, planeWaveAngleSeed + totalTime * 0.16);
+      gl.uniform1f(simUniforms.u_planeAmp, 0.35);
+      gl.uniform1f(simUniforms.u_trapForce, trapVal);
+      gl.uniform2f(simUniforms.u_pulseCenter, pulseCenter[0], pulseCenter[1]);
+      gl.uniform1f(simUniforms.u_pulseProgress, pulseProgress);
+      gl.uniform1f(simUniforms.u_pulseIntensity, pulseIntensity);
+      gl.uniform2f(simUniforms.u_mousePos, mouse.x, mouse.y);
+      gl.uniform2f(simUniforms.u_mouseVel, mouse.vx, mouse.vy);
+      gl.uniform1f(simUniforms.u_userActive, userInfluence);
+
+      gl.enable(gl.RASTERIZER_DISCARD);
+      gl.bindVertexArray(readVAO);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, writeBuf);
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+      gl.endTransformFeedback();
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+      gl.disable(gl.RASTERIZER_DISCARD);
+      gl.bindVertexArray(null);
+
+      // -----------------------------------------------------------------------
+      // Step 2: Render Liquid Light Background Membrane
+      // -----------------------------------------------------------------------
+      gl.useProgram(bgProgram);
+      gl.bindVertexArray(quadVAO);
+
+      gl.uniform2f(bgUniforms.u_resolution, canvas.width, canvas.height);
+      gl.uniform1f(bgUniforms.u_time, totalTime);
+      gl.uniform2f(bgUniforms.u_e0, e0.x, e0.y);
+      gl.uniform2f(bgUniforms.u_e1, e1.x, e1.y);
+      gl.uniform2f(bgUniforms.u_e2, e2.x, e2.y);
+      gl.uniform3f(bgUniforms.u_freqRatio, activeRatios[0], activeRatios[1], activeRatios[2]);
+      gl.uniform3f(bgUniforms.u_phases, initialPhase0, initialPhase1, initialPhase2);
+      gl.uniform3f(bgUniforms.u_weights, activeWeights[0], activeWeights[1], activeWeights[2]);
+      gl.uniform1f(bgUniforms.u_baseFreq, effectiveFreq);
+      gl.uniform1f(bgUniforms.u_damp, 0.25);
+      gl.uniform1f(bgUniforms.u_dispersion, dispVal);
+      gl.uniform1f(bgUniforms.u_amplitude, effectiveAmp);
+      gl.uniform1f(bgUniforms.u_planeAngle, planeWaveAngleSeed + totalTime * 0.16);
+      gl.uniform1f(bgUniforms.u_planeAmp, 0.35);
+      gl.uniform2f(bgUniforms.u_pulseCenter, pulseCenter[0], pulseCenter[1]);
+      gl.uniform1f(bgUniforms.u_pulseProgress, pulseProgress);
+      gl.uniform1f(bgUniforms.u_pulseIntensity, pulseIntensity);
+      gl.uniform1f(bgUniforms.u_resonance, resonance);
+      gl.uniform1f(bgUniforms.u_pitchFactor, effectivePitch);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // -----------------------------------------------------------------------
+      // Step 3: Render Trapped Chladni Grains (Additive Phosphor Glow)
+      // -----------------------------------------------------------------------
+      gl.useProgram(partProgram);
+      gl.uniform1f(partUniforms.u_aspect, aspect);
+      gl.uniform1f(partUniforms.u_dpr, dpr);
+
+      gl.bindVertexArray(renderVAO);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+      gl.disable(gl.BLEND);
+      gl.bindVertexArray(null);
+
+      // Advance ping-pong buffer for next frame
+      currentBufferSource = 1 - currentBufferSource;
+
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

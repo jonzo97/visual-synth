@@ -1,0 +1,13 @@
+{
+ "title": "Penrose Tiling (first draft)",
+ "blurb": "The first quasiperiodic tiling attempt, superseded by Multigrid Zellige and kept for history.",
+ "tags": [
+  "math",
+  "tiling",
+  "archive"
+ ],
+ "controls": "Sliders and reseed; H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "Canvas 2D"
+}

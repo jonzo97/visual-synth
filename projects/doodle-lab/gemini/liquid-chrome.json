@@ -1,0 +1,15 @@
+{
+ "title": "Liquid Chrome",
+ "blurb": "Domain-warped liquid metal with iridescent bands folding through itself. From the Acid Wave style.",
+ "tags": [
+  "gemini",
+  "generator",
+  "chrome",
+  "style study"
+ ],
+ "controls": "Sliders: Blob Scale, Rim Iridescence, Ripple Intensity · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/040-style-acid-wave-v2/index.html"
+}

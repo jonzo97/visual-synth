@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mycelial mind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Mycelial mind: colonization plus simple computation at every node.
+  Growth: hyphal tips random-walk with chemotropism toward food, avoid toxins,
+  branch apically, and fuse with other hyphae on contact (anastomosis),
+  which creates loops.
+  Learning: every few frames, paths from the spore to each reached food get
+  reinforced (conductance up); all edges slowly relax back. Thick = remembered.
+  Thinking: each node is a leaky integrate-and-fire unit. A spike sends
+  weight 0.5 + 0.17 * conductance to neighbors after a travel delay. Trunks
+  conduct alone; thin hyphae need coincident inputs, so junctions act as
+  coincidence detectors. Food nodes are pacemakers.
+*/
+:root {
+  --panel-bg: rgba(26, 16, 46, 0.82);
+  --panel-fg: #eee8f8;
+  --panel-muted: #ab9fc6;
+  --accent: #ffb85c;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(26, 16, 46, 0.82); } }
+:root[data-theme="dark"] { --panel-bg: rgba(26, 16, 46, 0.82); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+html, body { height: 100%; margin: 0; }
+body { background: #120b24; overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.panel {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(300px, calc(100vw - 24px)); background: var(--panel-bg); color: var(--panel-fg);
+  border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4;
+}
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 10px; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary .count { font-weight: 400; color: var(--panel-muted); font-variant-numeric: tabular-nums; }
+.body { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 86px 1fr 40px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg { display: flex; border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; overflow: hidden; width: 100%; }
+.seg button { flex: 1; border: 0; border-radius: 0; }
+.seg button[aria-pressed="true"] { background: rgba(255,184,92,0.3); }
+select, button {
+  font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+</style>
+<script src="../tools/lab-shim.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" open>
+  <summary><span>Mycelial mind</span><span class="count" id="count"></span></summary>
+  <div class="body">
+    <div class="seg" role="group" aria-label="What a tap does">
+      <button data-mode="food" aria-pressed="true">Feed</button>
+      <button data-mode="spike" aria-pressed="false">Poke</button>
+      <button data-mode="toxin" aria-pressed="false">Poison</button>
+    </div>
+    <label>Growth <input type="range" id="growth" min="0" max="6" step="1" value="2"><output id="growtho"></output></label>
+    <label>Branching <input type="range" id="branch" min="0.005" max="0.08" step="0.001" value="0.032"><output id="brancho"></output></label>
+    <label>Excitability <input type="range" id="excite" min="0" max="1" step="0.01" value="0.55"><output id="exciteo"></output></label>
+    <label>Path memory <input type="range" id="memory" min="0.95" max="0.999" step="0.001" value="0.988"><output id="memoryo"></output></label>
+    <div class="row">
+      <button id="reset">New spore</button>
+      <button id="pause">Pause</button>
+    </div>
+    <div class="hint">Feed to grow toward a spot. Poke to send a spike. Low excitability keeps signals on the thick, learned trunks.</div>
+  </div>
+</details>
+<script>
+(() => {
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const $ = (id) => document.getElementById(id);
+  const MAXN = 14000, MAXE = 18000, MAX_TIPS = 420, CELL = 10, RING = 64, REFRACTORY = 45;
+
+  // ---------- Graph storage ----------
+  const nx = new Float32Array(MAXN), ny = new Float32Array(MAXN), nv = new Float32Array(MAXN);
+  const vT = new Int32Array(MAXN), lastFire = new Int32Array(MAXN), refr = new Int32Array(MAXN);
+  const hyph = new Int32Array(MAXN), dead = new Uint8Array(MAXN);
+  const ea = new Int32Array(MAXE), eb = new Int32Array(MAXE), elen = new Float32Array(MAXE);
+  const econd = new Float32Array(MAXE), eborn = new Int32Array(MAXE);
+  const prevE = new Int32Array(MAXN), queue = new Int32Array(MAXN), seen = new Int32Array(MAXN);
+  let adj, grid, nCount, eCount, tips, foods, toxins, ring, nextId, frame, spikesWindow, spikeRate, W, H, dpr;
+  let mode = "food", running = true;
+
+  function reset() {
+    adj = []; grid = new Map(); nCount = 0; eCount = 0; tips = []; foods = []; toxins = [];
+    ring = Array.from({ length: RING }, () => []); nextId = 1; frame = 0; spikesWindow = []; spikeRate = 0;
+    lastFire.fill(-1e6); refr.fill(0); nv.fill(0); dead.fill(0); seen.fill(-1);
+    const cx = W / 2, cy = H / 2;
+    addNode(cx, cy, 0);
+    for (let i = 0; i < 7; i++) tips.push({ n: 0, h: i / 7 * Math.PI * 2 + Math.random() * 0.3, id: nextId++, age: 10, alive: true });
+    const m = Math.min(W, H);
+    for (let i = 0; i < 3; i++) {
+      const a = Math.random() * Math.PI * 2, d = m * (0.25 + Math.random() * 0.17);
+      foods.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, r: 16, node: -1, next: 0 });
+    }
+  }
+
+  const key = (gx, gy) => gx * 100003 + gy;
+  function addNode(x, y, id) {
+    const i = nCount++;
+    nx[i] = x; ny[i] = y; hyph[i] = id; nv[i] = 0; vT[i] = frame; lastFire[i] = -1e6; refr[i] = 0; dead[i] = 0;
+    adj.push([]);
+    const k = key(Math.floor(x / CELL), Math.floor(y / CELL));
+    let c = grid.get(k); if (!c) grid.set(k, c = []); c.push(i);
+    return i;
+  }
+  function addEdge(a, b) {
+    if (eCount >= MAXE) return;
+    const e = eCount++;
+    ea[e] = a; eb[e] = b; elen[e] = Math.hypot(nx[a] - nx[b], ny[a] - ny[b]); econd[e] = 1; eborn[e] = frame;
+    adj[a].push(e); adj[b].push(e);
+  }
+  // Nearest live node within radius (optionally skipping one hypha and one node)
+  function nearest(x, y, rad, skipId = -1, skipNode = -1) {
+    let best = -1, bd = rad * rad;
+    const gx = Math.floor(x / CELL), gy = Math.floor(y / CELL), rc = Math.ceil(rad / CELL);
+    for (let i = -rc; i <= rc; i++) for (let j = -rc; j <= rc; j++) {
+      const c = grid.get(key(gx + i, gy + j)); if (!c) continue;
+      for (const n of c) {
+        if (n === skipNode || hyph[n] === skipId || dead[n]) continue;
+        const d = (nx[n] - x) ** 2 + (ny[n] - y) ** 2;
+        if (d < bd) { bd = d; best = n; }
+      }
+    }
+    return best;
+  }
+  function crowd(x, y) {
+    let c = 0; const gx = Math.floor(x / CELL), gy = Math.floor(y / CELL);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const a = grid.get(key(gx + i, gy + j)); if (a) c += a.length; }
+    return c;
+  }
+  const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+
+  // ---------- Growth ----------
+  function growStep() {
+    const branchP = +$("branch").value, fresh = [];
+    for (const t of tips) {
+      if (!t.alive) continue;
+      if (nCount >= MAXN - 8) { t.alive = false; continue; }
+      const x = nx[t.n], y = ny[t.n];
+      let target = null, bd = 280;
+      for (const f of foods) { const d = Math.hypot(f.x - x, f.y - y); if (d < bd) { bd = d; target = f; } }
+      if (target) t.h += angDiff(Math.atan2(target.y - y, target.x - x), t.h) * (target.node < 0 ? 0.1 : 0.03);
+      for (const z of toxins) {
+        const d = Math.hypot(z.x - x, z.y - y);
+        if (d < z.r + 60) t.h += angDiff(Math.atan2(y - z.y, x - z.x), t.h) * 0.25;
+      }
+      t.h += (Math.random() - 0.5) * 0.35;
+      const x2 = x + Math.cos(t.h) * 3.2, y2 = y + Math.sin(t.h) * 3.2;
+      if (x2 < 6 || y2 < 6 || x2 > W - 6 || y2 > H - 6) { t.alive = false; continue; }
+      if (toxins.some(z => Math.hypot(z.x - x2, z.y - y2) < z.r)) { t.alive = false; continue; }
+      // Anastomosis: fuse with a different hypha on contact, which creates loops
+      if (t.age > 6) {
+        const hit = nearest(x2, y2, 5, t.id, t.n);
+        if (hit >= 0) { if (Math.random() < 0.85) addEdge(t.n, hit); t.alive = false; continue; }
+      }
+      if (crowd(x2, y2) > 16 && Math.random() < 0.3) { t.alive = false; continue; }
+      const n = addNode(x2, y2, t.id);
+      addEdge(t.n, n); t.n = n; t.age++;
+      for (const f of foods) {
+        if (f.node < 0 && Math.hypot(f.x - x2, f.y - y2) < f.r) {
+          f.node = n; t.alive = false;
+          for (let i = 0; i < 4; i++) fresh.push({ n, h: Math.random() * Math.PI * 2, id: nextId++, age: 0, alive: true });
+        }
+      }
+      if (t.alive && Math.random() < branchP && tips.length + fresh.length < MAX_TIPS) {
+        fresh.push({ n, h: t.h + (Math.random() < 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.5), id: nextId++, age: 0, alive: true });
+      }
+    }
+    tips = tips.filter(t => t.alive).concat(fresh);
+    // Lateral re-sprouting from older hyphae keeps colonization going
+    if (tips.length < 6 && nCount > 20 && nCount < MAXN - 100 && Math.random() < 0.2) {
+      const n = Math.floor(Math.random() * nCount);
+      if (!dead[n]) tips.push({ n, h: Math.random() * Math.PI * 2, id: nextId++, age: 0, alive: true });
+    }
+  }
+
+  // ---------- Learning: reinforce spore-to-food paths ----------
+  function reinforce() {
+    const decay = +$("memory").value;
+    for (let e = 0; e < eCount; e++) econd[e] = 1 + (econd[e] - 1) * decay;
+    let head = 0, tail = 0;
+    queue[tail++] = 0; seen[0] = frame; prevE[0] = -1;
+    while (head < tail) {
+      const a = queue[head++];
+      for (const e of adj[a]) {
+        const b = ea[e] === a ? eb[e] : ea[e];
+        if (seen[b] === frame || dead[b]) continue;
+        seen[b] = frame; prevE[b] = e; queue[tail++] = b;
+      }
+    }
+    for (const f of foods) {
+      if (f.node < 0 || seen[f.node] !== frame) continue;
+      let n = f.node, guard = 0;
+      while (prevE[n] >= 0 && guard++ < MAXN) {
+        const e = prevE[n]; econd[e] = Math.min(8, econd[e] + 0.35);
+        n = ea[e] === n ? eb[e] : ea[e];
+      }
+    }
+  }
+
+  // ---------- Thinking: leaky integrate-and-fire ----------
+  function threshold() { return 1.3 - 0.8 * +$("excite").value; }
+  function schedule(n, w, delay) { ring[(frame + delay) % RING].push(n, w); }
+  function fire(n) {
+    lastFire[n] = frame; refr[n] = frame + REFRACTORY; nv[n] = 0; spikesWindow.push(frame);
+    for (const e of adj[n]) {
+      const m = ea[e] === n ? eb[e] : ea[e];
+      if (dead[m]) continue;
+      schedule(m, 0.5 + 0.17 * econd[e], Math.max(1, Math.min(RING - 1, Math.round(elen[e] / 2))));
+    }
+  }
+  function signalStep() {
+    const slot = frame % RING, arr = ring[slot], th = threshold();
+    ring[slot] = [];
+    for (let i = 0; i < arr.length; i += 2) {
+      const n = arr[i];
+      nv[n] = nv[n] * Math.pow(0.85, frame - vT[n]) + arr[i + 1]; vT[n] = frame;   // leak, then integrate
+      if (nv[n] >= th && frame >= refr[n]) fire(n);
+    }
+    for (const f of foods) if (f.node >= 0 && frame >= f.next) { if (frame >= refr[f.node]) fire(f.node); f.next = frame + 70 + Math.random() * 90; }
+    if (frame % 220 === 0 && frame >= refr[0]) fire(0);
+    while (spikesWindow.length && spikesWindow[0] < frame - 60) spikesWindow.shift();
+    spikeRate = spikesWindow.length;
+  }
+
+  // ---------- Rendering ----------
+  function render() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) / 2);
+    bg.addColorStop(0, "#1d1238"); bg.addColorStop(1, "#0b0717");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    for (const f of foods) {
+      const pulse = f.node >= 0 ? Math.max(0, 1 - (frame - lastFire[f.node]) / 30) : 0;
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * (2.4 + pulse));
+      g.addColorStop(0, `rgba(255, 143, 216, ${0.55 + 0.4 * pulse})`); g.addColorStop(1, "rgba(255, 143, 216, 0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (2.4 + pulse), 0, Math.PI * 2); ctx.fill();
+    }
+    for (const z of toxins) {
+      const g = ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, z.r * 1.3);
+      g.addColorStop(0, "rgba(120, 30, 40, 0.55)"); g.addColorStop(1, "rgba(120, 30, 40, 0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(z.x, z.y, z.r * 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Hyphae, batched by width bin and fade bin
+    const bins = Array.from({ length: 18 }, () => new Path2D());
+    const glow = [new Path2D(), new Path2D(), new Path2D()];
+    for (let e = 0; e < eCount; e++) {
+      const a = ea[e], b = eb[e];
+      if (dead[a] || dead[b]) continue;
+      const c = econd[e];
+      const wb = Math.min(5, Math.floor((c - 1) * 1.2));
+      const fade = c > 1.3 ? 0 : Math.min(2, Math.floor((frame - eborn[e]) / 500));
+      const p = bins[wb * 3 + fade]; p.moveTo(nx[a], ny[a]); p.lineTo(nx[b], ny[b]);
+      const age = frame - Math.max(lastFire[a], lastFire[b]);
+      if (age < 12) { const g = glow[Math.min(2, Math.floor(age / 4))]; g.moveTo(nx[a], ny[a]); g.lineTo(nx[b], ny[b]); }
+    }
+    ctx.lineCap = "round";
+    const alphas = [0.85, 0.45, 0.2];
+    for (let wb = 0; wb < 6; wb++) for (let f = 0; f < 3; f++) {
+      ctx.strokeStyle = `rgba(${200 + wb * 8}, ${228 + wb * 3}, 240, ${wb > 0 ? 0.95 : alphas[f]})`;
+      ctx.lineWidth = 0.7 + wb * 0.75; ctx.stroke(bins[wb * 3 + f]);
+    }
+    ctx.globalCompositeOperation = "lighter";
+    const gA = [1, 0.55, 0.25];
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = `rgba(255, 170, 70, ${0.25 * gA[i]})`; ctx.lineWidth = 7; ctx.stroke(glow[i]);
+      ctx.strokeStyle = `rgba(255, 214, 150, ${0.9 * gA[i]})`; ctx.lineWidth = 1.8; ctx.stroke(glow[i]);
+    }
+    ctx.fillStyle = "rgba(235, 250, 255, 0.9)";
+    for (const t of tips) { ctx.beginPath(); ctx.arc(nx[t.n], ny[t.n], 1.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalCompositeOperation = "source-over";
+    $("count").textContent = `${tips.length} tips, ${(nCount / 1000).toFixed(1)}k nodes, ${spikeRate} spikes/s`;
+  }
+
+  function loop() {
+    if (running) {
+      const steps = +$("growth").value;
+      for (let i = 0; i < steps; i++) growStep();
+      signalStep();
+      if (frame % 15 === 0) reinforce();
+      frame++;
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Interaction ----------
+  canvas.addEventListener("pointerdown", (e) => {
+    const x = e.clientX, y = e.clientY;
+    if (mode === "food") {
+      foods.push({ x, y, r: 16, node: -1, next: 0 });
+      const n = nearest(x, y, 400);
+      if (n >= 0) for (let i = 0; i < 2; i++) tips.push({ n, h: Math.atan2(y - ny[n], x - nx[n]) + (Math.random() - 0.5) * 0.6, id: nextId++, age: 0, alive: true });
+    } else if (mode === "spike") {
+      const n = nearest(x, y, 50);
+      if (n >= 0) fire(n);
+    } else {
+      const r = 45; toxins.push({ x, y, r });
+      for (let i = 0; i < nCount; i++) if (Math.hypot(nx[i] - x, ny[i] - y) < r) dead[i] = 1;
+      for (const t of tips) if (dead[t.n]) t.alive = false;
+      foods.forEach(f => { if (f.node >= 0 && dead[f.node]) f.node = -1; });
+    }
+  });
+  document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll(".seg button").forEach(o => o.setAttribute("aria-pressed", o === b));
+  });
+  function sync() {
+    $("growtho").textContent = $("growth").value;
+    $("brancho").textContent = (+$("branch").value).toFixed(3);
+    $("exciteo").textContent = (+$("excite").value).toFixed(2);
+    $("memoryo").textContent = (+$("memory").value).toFixed(3);
+  }
+  ["growth", "branch", "excite", "memory"].forEach(id => $(id).addEventListener("input", sync));
+  $("reset").onclick = reset;
+  $("pause").onclick = () => { running = !running; $("pause").textContent = running ? "Pause" : "Resume"; };
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
+  }
+  addEventListener("resize", resize);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) $("growth").value = 1;
+
+  resize(); sync(); reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+<!-- Clip recorder: captures the canvas (not the controls) via MediaRecorder,
+     then offers the file through the page's downloads capability. -->
+<style>
+.rec { position: fixed; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 10;
+  font: 600 13px "Instrument Sans", system-ui, sans-serif; color: #f3f0ea; background: rgba(20,20,24,0.78);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 18px; padding: 7px 14px; cursor: pointer;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; }
+.rec.on { background: rgba(170, 30, 40, 0.88); }
+.rec:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+</style>
+<button class="rec" id="recBtn" aria-live="polite">Record clip</button>
+<script>
+(() => {
+  const btn = document.getElementById("recBtn");
+  const canvas = document.querySelector("canvas");
+  const LIMIT = 30;                                   // seconds; auto-stops here
+  if (!canvas || !canvas.captureStream || !window.MediaRecorder) return;
+  const TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = TYPES.find(t => MediaRecorder.isTypeSupported(t));
+  if (!mime) return;
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  let downloads = null, rec = null, chunks = [], t0 = 0, tick = null;
+
+  (async () => {
+    if (!window.claude || !window.claude.use) return;
+    downloads = await window.claude.use("downloads");
+    if (downloads) btn.style.display = "block";
+  })();
+
+  function stop() { if (rec && rec.state === "recording") rec.stop(); }
+  btn.onclick = () => {
+    if (rec && rec.state === "recording") return stop();
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 12e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(tick); btn.classList.remove("on"); btn.textContent = "Saving...";
+      const blob = new Blob(chunks, { type: mime });
+      const slug = document.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      try { await downloads.save({ filename: `${slug}-${stamp}.${ext}`, data: blob }); btn.textContent = "Saved"; }
+      catch (e) { btn.textContent = e && e.code === "declined" ? "Not saved" : "Save failed"; }
+      setTimeout(() => { btn.textContent = "Record clip"; }, 2000);
+    };
+    rec.start(250);
+    t0 = performance.now(); btn.classList.add("on"); btn.textContent = "Stop  0 s";
+    tick = setInterval(() => {
+      const s = Math.floor((performance.now() - t0) / 1000);
+      btn.textContent = `Stop  ${s} s`;
+      if (s >= LIMIT) stop();
+    }, 250);
+  };
+})();
+</script>
+
+</body>
+</html>

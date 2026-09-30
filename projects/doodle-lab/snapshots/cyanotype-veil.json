@@ -1,0 +1,14 @@
+{
+ "title": "Cyanotype Veil",
+ "blurb": "A Clifford attractor printed as a cyanotype, its constants orbiting so the veil folds and refolds.",
+ "chain": "Attractor Exposure",
+ "tags": [
+  "synth snapshot",
+  "attractor"
+ ],
+ "controls": "Knobs: Constant orbit, Exposure, a, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#cyanotype-veil"
+}

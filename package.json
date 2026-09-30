@@ -1,0 +1,40 @@
+{
+  "name": "visual-synth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Visual Synth and Doodle Lab: a modular WebGPU visual synthesizer and a shelf of playable browser doodles.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jonzo97/visual-synth.git"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "vite --open /",
+    "build": "vite build",
+    "preview": "vite preview --open /",
+    "typecheck": "tsc -p tsconfig.json && tsc -p projects/shader-lab/tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.11.6",
+    "mediabunny": "1.56.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vgpu": "0.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@webgpu/types": "0.1.72",
+    "fake-indexeddb": "6.2.5",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  }
+}

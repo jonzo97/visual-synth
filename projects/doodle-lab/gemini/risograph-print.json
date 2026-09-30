@@ -1,0 +1,15 @@
+{
+ "title": "Risograph Print",
+ "blurb": "A moving poster run through a two-ink risograph press: rotated halftone screens, drifting misregistration, roller banding and paper grain.",
+ "tags": [
+  "gemini",
+  "effect",
+  "halftone",
+  "print"
+ ],
+ "controls": "Sliders: Registration Drift, Roller Starvation, Ink Dryness · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/002-riso-print-v2/index.html"
+}

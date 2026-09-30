@@ -1,0 +1,15 @@
+{
+ "title": "Apollonian Clockwork",
+ "blurb": "An endless zoom into an Apollonian circle packing, redrawn as brass astrolabe rings whose spokes turn faster the smaller they are.",
+ "tags": [
+  "gemini",
+  "generator",
+  "fractal",
+  "loop"
+ ],
+ "controls": "Sliders: Clockwork Speed, Recursion Depth, Horological Detail · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/008-apollonian-dive-v2/index.html"
+}

@@ -1,0 +1,15 @@
+{
+ "title": "Pencil Forest",
+ "blurb": "A seeded coloured-pencil forest in layered hatching on paper, with a few gnomes hiding between the trees; every seed draws a new wood.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "drawing",
+  "gnomes"
+ ],
+ "controls": "Sliders: Lantern Radiance, Forest Breeze, Woodland Life · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/017-pencil-forest-v2/index.html"
+}

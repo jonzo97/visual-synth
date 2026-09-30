@@ -1,0 +1,3598 @@
+[
+  {
+    "type": "adsr",
+    "label": "ADSR",
+    "family": "Modulators",
+    "category": "Modulation",
+    "inputPorts": [],
+    "outputPorts": [
+      "value"
+    ],
+    "params": [
+      {
+        "key": "attack",
+        "label": "Attack (s)",
+        "min": 0.001,
+        "max": 10,
+        "step": 0.01,
+        "default": 0.15
+      },
+      {
+        "key": "decay",
+        "label": "Decay (s)",
+        "min": 0.001,
+        "max": 10,
+        "step": 0.01,
+        "default": 0.3
+      },
+      {
+        "key": "sustain",
+        "label": "Sustain",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "release",
+        "label": "Release (s)",
+        "min": 0.001,
+        "max": 10,
+        "step": 0.01,
+        "default": 0.8
+      }
+    ],
+    "tags": {
+      "behaviour": [],
+      "cost": "light"
+    },
+    "usage": 1
+  },
+  {
+    "type": "attractor",
+    "label": "Attractor Exposure",
+    "family": "Fractals & 3D",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "kind",
+        "label": "Clifford / de Jong",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "a",
+        "label": "a",
+        "min": -3,
+        "max": 3,
+        "step": 0.01,
+        "default": -1.4
+      },
+      {
+        "key": "b",
+        "label": "b",
+        "min": -3,
+        "max": 3,
+        "step": 0.01,
+        "default": 1.6
+      },
+      {
+        "key": "c",
+        "label": "c",
+        "min": -3,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "d",
+        "label": "d",
+        "min": -3,
+        "max": 3,
+        "step": 0.01,
+        "default": 0.7
+      },
+      {
+        "key": "orbit",
+        "label": "Constant orbit",
+        "min": 0,
+        "max": 0.5,
+        "step": 0.01,
+        "default": 0.08
+      },
+      {
+        "key": "zoom",
+        "label": "Zoom",
+        "min": 0.5,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "exposure",
+        "label": "Exposure",
+        "min": 0.3,
+        "max": 3,
+        "step": 0.01,
+        "default": 1.2
+      },
+      {
+        "key": "print",
+        "label": "Print process",
+        "min": 0,
+        "max": 5,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "medium"
+    },
+    "usage": 1
+  },
+  {
+    "type": "cells",
+    "label": "Cell Press",
+    "family": "Geometry & Tilings",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "sites",
+        "label": "Site count",
+        "min": 8,
+        "max": 48,
+        "step": 1,
+        "default": 24
+      },
+      {
+        "key": "seed",
+        "label": "Site seed",
+        "min": 0,
+        "max": 65535,
+        "step": 1,
+        "default": 17
+      },
+      {
+        "key": "stretch",
+        "label": "Cell stretch",
+        "min": 0.4,
+        "max": 2.5,
+        "step": 0.01,
+        "default": 1.1
+      },
+      {
+        "key": "motion",
+        "label": "Site motion",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.48
+      },
+      {
+        "key": "law",
+        "label": "Orbit / drift / counterflow",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "edge",
+        "label": "Membrane width",
+        "min": 0,
+        "max": 0.05,
+        "step": 0.01,
+        "default": 0.009
+      },
+      {
+        "key": "fill",
+        "label": "Interior fill",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.88
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 5
+  },
+  {
+    "type": "chemical",
+    "label": "Chemical Garden",
+    "family": "Simulations",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "seed",
+        "label": "Seed",
+        "min": 0,
+        "max": 65535,
+        "step": 1,
+        "default": 42
+      },
+      {
+        "key": "grid",
+        "label": "Simulation grid",
+        "min": 128,
+        "max": 512,
+        "step": 128,
+        "default": 256
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "feed",
+        "label": "Feed",
+        "min": 0.01,
+        "max": 0.08,
+        "step": 0.001,
+        "default": 0.029
+      },
+      {
+        "key": "kill",
+        "label": "Kill",
+        "min": 0.03,
+        "max": 0.075,
+        "step": 0.001,
+        "default": 0.057
+      },
+      {
+        "key": "diffusionU",
+        "label": "Diffusion U",
+        "min": 0.05,
+        "max": 0.22,
+        "step": 0.005,
+        "default": 0.16
+      },
+      {
+        "key": "diffusionV",
+        "label": "Diffusion V",
+        "min": 0.02,
+        "max": 0.12,
+        "step": 0.005,
+        "default": 0.08
+      },
+      {
+        "key": "steps",
+        "label": "Growth speed",
+        "min": 1,
+        "max": 8,
+        "step": 1,
+        "default": 4
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "stateful"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "complex",
+    "label": "Complex Kaleidoscope",
+    "family": "Fractals & 3D",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "arrangement",
+        "label": "Zero / pole arrangement",
+        "min": 0,
+        "max": 4,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "style",
+        "label": "Style",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 2
+      },
+      {
+        "key": "spread",
+        "label": "Zero / pole spread",
+        "min": 0.3,
+        "max": 2,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "lines",
+        "label": "Phase lines",
+        "min": 0,
+        "max": 24,
+        "step": 0.01,
+        "default": 12
+      },
+      {
+        "key": "warp",
+        "label": "Warp z^k",
+        "min": 1,
+        "max": 6,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "iterate",
+        "label": "Iterate f(f(z))",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "drift",
+        "label": "Handle drift",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "spin",
+        "label": "Phase spin turns per loop",
+        "min": -3,
+        "max": 3,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "flow",
+        "label": "Contour flow per loop",
+        "min": -4,
+        "max": 4,
+        "step": 1,
+        "default": 2
+      },
+      {
+        "key": "zoom",
+        "label": "View half-height",
+        "min": 0.5,
+        "max": 4,
+        "step": 0.01,
+        "default": 1.6
+      },
+      {
+        "key": "hue",
+        "label": "Colour cycle",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "contour",
+    "label": "Contour Drift",
+    "family": "Orbits & Contours",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "density",
+        "label": "Contour density",
+        "min": 3,
+        "max": 24,
+        "step": 0.1,
+        "default": 11
+      },
+      {
+        "key": "scale",
+        "label": "Landscape scale",
+        "min": 0.5,
+        "max": 3,
+        "step": 0.01,
+        "default": 1.4
+      },
+      {
+        "key": "fold",
+        "label": "Liquid fold",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.55
+      },
+      {
+        "key": "drift",
+        "label": "Island drift",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "thickness",
+        "label": "Shoreline width",
+        "min": 0.025,
+        "max": 0.22,
+        "step": 0.005,
+        "default": 0.065
+      },
+      {
+        "key": "fill",
+        "label": "Color pools",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.22
+      },
+      {
+        "key": "offset",
+        "label": "Tide phase",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 2
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "fizz",
+    "label": "Frost Fizz",
+    "family": "Materials",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "palette",
+        "label": "Finish: white / frost / chrome night",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "white",
+          "frost",
+          "chrome night"
+        ]
+      },
+      {
+        "key": "fizz",
+        "label": "Carbonation",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "bubbleSize",
+        "label": "Bubble size",
+        "min": 0.4,
+        "max": 2,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "rise",
+        "label": "Bubble rise per loop",
+        "min": 1,
+        "max": 6,
+        "step": 1,
+        "default": 2
+      },
+      {
+        "key": "frost",
+        "label": "Condensation",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.4
+      },
+      {
+        "key": "claws",
+        "label": "Scratches",
+        "min": 0,
+        "max": 5,
+        "step": 1,
+        "default": 4
+      },
+      {
+        "key": "clawDepth",
+        "label": "Scratch depth",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.7
+      },
+      {
+        "key": "slant",
+        "label": "Scratch slant",
+        "min": -0.5,
+        "max": 0.5,
+        "step": 0.01,
+        "default": 0.2
+      },
+      {
+        "key": "brushed",
+        "label": "Brushed metal",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "glint",
+        "label": "Glint sweeps per loop",
+        "min": -2,
+        "max": 2,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "light",
+        "label": "Light angle",
+        "min": -1.5,
+        "max": 1.5,
+        "step": 0.01,
+        "default": -0.4
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "fx.bayer",
+    "label": "Bayer dither",
+    "family": "Lo-fi & Glitch",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "threshold",
+        "label": "Threshold bias",
+        "min": -0.5,
+        "max": 0.5,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "scale",
+        "label": "Pattern scale",
+        "min": 1,
+        "max": 8,
+        "step": 1,
+        "default": 2
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 7
+  },
+  {
+    "type": "fx.chrono",
+    "label": "Chrono Loom",
+    "family": "Time & Feedback",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.8
+      },
+      {
+        "key": "seconds",
+        "label": "Age span (s, 15 Hz)",
+        "min": 0,
+        "max": 2.066666666666667,
+        "step": 0.01,
+        "default": 1.2
+      },
+      {
+        "key": "mode",
+        "label": "Age field: horizontal / vertical / radial",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "horizontal",
+          "vertical",
+          "radial"
+        ]
+      },
+      {
+        "key": "spread",
+        "label": "RGB age spread (s)",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "history",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 4
+  },
+  {
+    "type": "fx.crush",
+    "label": "Color crush",
+    "family": "Lo-fi & Glitch",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 8
+  },
+  {
+    "type": "fx.delay",
+    "label": "Delay",
+    "family": "Time & Feedback",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "history",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 4
+  },
+  {
+    "type": "fx.droste",
+    "label": "Droste Zoom",
+    "family": "Warp & Symmetry",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "ratio",
+        "label": "Scale ratio",
+        "min": 1.5,
+        "max": 8,
+        "step": 0.01,
+        "default": 3
+      },
+      {
+        "key": "arms",
+        "label": "Spiral arms",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "zoom",
+        "label": "Zoom turns per loop",
+        "min": -4,
+        "max": 4,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "spin",
+        "label": "Spin turns per loop",
+        "min": -3,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "outer",
+        "label": "Ring radius",
+        "min": 0.2,
+        "max": 0.9,
+        "step": 0.01,
+        "default": 0.48
+      },
+      {
+        "key": "soft",
+        "label": "Seam softness",
+        "min": 0,
+        "max": 0.5,
+        "step": 0.01,
+        "default": 0.2
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "fx.feedback",
+    "label": "Feedback Chamber",
+    "family": "Time & Feedback",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.7
+      },
+      {
+        "key": "zoom",
+        "label": "Feedback zoom",
+        "min": 0.9,
+        "max": 1.1,
+        "step": 0.001,
+        "default": 1.006
+      },
+      {
+        "key": "rotate",
+        "label": "Rotation per tick (rad)",
+        "min": -0.1,
+        "max": 0.1,
+        "step": 0.001,
+        "default": 0.002
+      },
+      {
+        "key": "shiftX",
+        "label": "Horizontal shift per tick",
+        "min": -0.05,
+        "max": 0.05,
+        "step": 0.001,
+        "default": 0
+      },
+      {
+        "key": "shiftY",
+        "label": "Vertical shift per tick",
+        "min": -0.05,
+        "max": 0.05,
+        "step": 0.001,
+        "default": 0
+      },
+      {
+        "key": "decay",
+        "label": "History retention",
+        "min": 0,
+        "max": 0.999,
+        "step": 0.001,
+        "default": 0.96
+      },
+      {
+        "key": "injection",
+        "label": "Source injection",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.12
+      },
+      {
+        "key": "hue",
+        "label": "Hue drift per tick (rad)",
+        "min": -0.25,
+        "max": 0.25,
+        "step": 0.001,
+        "default": 0
+      },
+      {
+        "key": "lighten",
+        "label": "Composite: crossfade / lighten",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "crossfade",
+          "lighten"
+        ]
+      },
+      {
+        "key": "centerX",
+        "label": "Tunnel centre X",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "centerY",
+        "label": "Tunnel centre Y",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "history",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 5
+  },
+  {
+    "type": "fx.fold",
+    "label": "Tone Fold",
+    "family": "Tone & Filter",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.65
+      },
+      {
+        "key": "mode",
+        "label": "Transfer: solarize / fold",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 1,
+        "optionLabels": [
+          "solarize",
+          "fold"
+        ]
+      },
+      {
+        "key": "folds",
+        "label": "Fold count",
+        "min": 1,
+        "max": 8,
+        "step": 0.01,
+        "default": 2
+      },
+      {
+        "key": "threshold",
+        "label": "Solarize pivot",
+        "min": 0.05,
+        "max": 0.95,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "offset",
+        "label": "Fold offset",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "channels",
+        "label": "Transfer: luma / RGB",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "luma",
+          "RGB"
+        ]
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "fx.glow",
+    "label": "Glow",
+    "family": "Tone & Filter",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 28
+  },
+  {
+    "type": "fx.hyperbolic",
+    "label": "Hyperbolic Map",
+    "family": "Warp & Symmetry",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "sides",
+        "label": "Polygon sides p",
+        "min": 3,
+        "max": 12,
+        "step": 1,
+        "default": 7
+      },
+      {
+        "key": "meet",
+        "label": "Polygons per vertex q",
+        "min": 3,
+        "max": 12,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "zoom",
+        "label": "Disk zoom",
+        "min": 0.5,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "drift",
+        "label": "Möbius drift",
+        "min": 0,
+        "max": 0.65,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "spin",
+        "label": "Spin turns per loop",
+        "min": -3,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "scale",
+        "label": "Input area per tile",
+        "min": 0.05,
+        "max": 2,
+        "step": 0.01,
+        "default": 0.3
+      },
+      {
+        "key": "rotation",
+        "label": "Texture rotation",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "edge",
+        "label": "Seam darkness",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.4
+      },
+      {
+        "key": "surround",
+        "label": "Outside the disk: black / input",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "fx.kaleido",
+    "label": "Kaleidoscope",
+    "family": "Warp & Symmetry",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "segments",
+        "label": "Wedges",
+        "min": 2,
+        "max": 16,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "rotation",
+        "label": "Rotation (rad)",
+        "min": -3.1416,
+        "max": 3.1416,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "zoom",
+        "label": "Zoom",
+        "min": 0.25,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "twist",
+        "label": "Spiral twist",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 1
+  },
+  {
+    "type": "fx.marble",
+    "label": "Ink Marbling",
+    "family": "Warp & Symmetry",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "strength",
+        "label": "Drag strength (UV)",
+        "min": 0,
+        "max": 0.3,
+        "step": 0.01,
+        "default": 0.08
+      },
+      {
+        "key": "warp",
+        "label": "Noise bends noise",
+        "min": 0,
+        "max": 6,
+        "step": 0.01,
+        "default": 3.5
+      },
+      {
+        "key": "scale",
+        "label": "Vein scale",
+        "min": 0.5,
+        "max": 8,
+        "step": 0.01,
+        "default": 2.4
+      },
+      {
+        "key": "flow",
+        "label": "Flow orbit",
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "veins",
+        "label": "Ink veins",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.2
+      },
+      {
+        "key": "bands",
+        "label": "Vein bands",
+        "min": 2,
+        "max": 14,
+        "step": 0.01,
+        "default": 5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "fx.mask",
+    "label": "Mask Mixer",
+    "family": "Mix & Mask",
+    "category": "Effects",
+    "inputPorts": [
+      "in",
+      "b",
+      "mask"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "mix",
+        "label": "Layer B mix",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "threshold",
+        "label": "Mask threshold",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "softness",
+        "label": "Mask softness",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.1
+      },
+      {
+        "key": "invert",
+        "label": "Invert mask",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "blend",
+        "label": "Blend: crossfade / multiply / difference",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "crossfade",
+          "multiply",
+          "difference"
+        ]
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input",
+        "extra-inputs"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "fx.morph",
+    "label": "Ink Morphology",
+    "family": "Tone & Filter",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "mode",
+        "label": "Operation: dilate / erode / outline",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 2,
+        "optionLabels": [
+          "dilate",
+          "erode",
+          "outline"
+        ]
+      },
+      {
+        "key": "kernel",
+        "label": "Kernel: 3×3 / 5×5",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "3×3",
+          "5×5"
+        ]
+      },
+      {
+        "key": "radius",
+        "label": "Sample spacing (px)",
+        "min": 1,
+        "max": 4,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "lumaOnly",
+        "label": "Output: source color / luma",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "source color",
+          "luma"
+        ]
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 5
+  },
+  {
+    "type": "fx.reverb",
+    "label": "Impulse reverb",
+    "family": "Time & Feedback",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "history",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 9
+  },
+  {
+    "type": "fx.vhs",
+    "label": "VHS / glitch",
+    "family": "Lo-fi & Glitch",
+    "category": "Effects",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 4
+  },
+  {
+    "type": "fx.warp",
+    "label": "Field Warp",
+    "family": "Warp & Symmetry",
+    "category": "Effects",
+    "inputPorts": [
+      "in",
+      "field"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Dry / wet",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "strength",
+        "label": "Displacement (UV)",
+        "min": 0,
+        "max": 0.5,
+        "step": 0.01,
+        "default": 0.08
+      },
+      {
+        "key": "mode",
+        "label": "Field: gradient / RG",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0,
+        "optionLabels": [
+          "gradient",
+          "RG"
+        ]
+      },
+      {
+        "key": "boundary",
+        "label": "Edges: clamp / wrap / mirror",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 1,
+        "optionLabels": [
+          "clamp",
+          "wrap",
+          "mirror"
+        ]
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input",
+        "extra-inputs"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "gate",
+    "label": "Manual gate",
+    "family": "Modulators",
+    "category": "Modulation",
+    "inputPorts": [],
+    "outputPorts": [
+      "gate"
+    ],
+    "params": [],
+    "tags": {
+      "behaviour": [],
+      "cost": "light"
+    },
+    "usage": 1
+  },
+  {
+    "type": "hyperbolic",
+    "label": "Hyperbolic Tiling",
+    "family": "Geometry & Tilings",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "sides",
+        "label": "Polygon sides p",
+        "min": 3,
+        "max": 12,
+        "step": 1,
+        "default": 7
+      },
+      {
+        "key": "meet",
+        "label": "Polygons per vertex q",
+        "min": 3,
+        "max": 12,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "drift",
+        "label": "Möbius drift",
+        "min": 0,
+        "max": 0.65,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "spin",
+        "label": "Spin turns per loop",
+        "min": -3,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "rotation",
+        "label": "Rotation",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "zoom",
+        "label": "Disk zoom",
+        "min": 0.5,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "edge",
+        "label": "Edge width",
+        "min": 0.2,
+        "max": 4,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "spread",
+        "label": "Depth color spread",
+        "min": 0,
+        "max": 0.4,
+        "step": 0.01,
+        "default": 0.07
+      },
+      {
+        "key": "cycles",
+        "label": "Color cycles per loop",
+        "min": 0,
+        "max": 4,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 11,
+        "step": 1,
+        "default": 9
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "ink",
+    "label": "Ink in Water",
+    "family": "Simulations",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "seed",
+        "label": "Seed",
+        "min": 0,
+        "max": 65535,
+        "step": 1,
+        "default": 42
+      },
+      {
+        "key": "grid",
+        "label": "Simulation grid",
+        "min": 128,
+        "max": 512,
+        "step": 128,
+        "default": 256
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "curl",
+        "label": "Vorticity (curl)",
+        "min": 0,
+        "max": 40,
+        "step": 0.01,
+        "default": 14
+      },
+      {
+        "key": "stir",
+        "label": "Stirrer strength",
+        "min": 0,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "emitters",
+        "label": "Ink stirrers",
+        "min": 1,
+        "max": 4,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "swirl",
+        "label": "Stirrer speed",
+        "min": 0.1,
+        "max": 3,
+        "step": 0.01,
+        "default": 0.8
+      },
+      {
+        "key": "drag",
+        "label": "Water memory",
+        "min": 0.9,
+        "max": 1,
+        "step": 0.001,
+        "default": 0.995
+      },
+      {
+        "key": "fade",
+        "label": "Ink persistence",
+        "min": 0.95,
+        "max": 1,
+        "step": 0.001,
+        "default": 0.996
+      },
+      {
+        "key": "ink",
+        "label": "Ink flow",
+        "min": 0,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "exposure",
+        "label": "Exposure",
+        "min": 0.2,
+        "max": 4,
+        "step": 0.01,
+        "default": 1
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "stateful"
+      ],
+      "cost": "heavy"
+    },
+    "usage": 2
+  },
+  {
+    "type": "julia",
+    "label": "Breathing Julia",
+    "family": "Fractals & 3D",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "shape",
+        "label": "Quaternion Julia / Mandelbulb",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "cx",
+        "label": "c real",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": -0.2
+      },
+      {
+        "key": "cy",
+        "label": "c i",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "cz",
+        "label": "c j",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.2
+      },
+      {
+        "key": "breathe",
+        "label": "Breathing",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "slice",
+        "label": "4D slice",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "power",
+        "label": "Mandelbulb power",
+        "min": 2,
+        "max": 10,
+        "step": 0.01,
+        "default": 8
+      },
+      {
+        "key": "orbit",
+        "label": "Camera turns per loop",
+        "min": -2,
+        "max": 2,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "distance",
+        "label": "Camera distance",
+        "min": 1.8,
+        "max": 5,
+        "step": 0.01,
+        "default": 2.8
+      },
+      {
+        "key": "tilt",
+        "label": "Camera tilt",
+        "min": -1.2,
+        "max": 1.2,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "glow",
+        "label": "Glow",
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "default": 0.8
+      },
+      {
+        "key": "hue",
+        "label": "Colour cycle",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.1
+      },
+      {
+        "key": "spread",
+        "label": "Colour spread",
+        "min": 0,
+        "max": 3,
+        "step": 0.01,
+        "default": 1.2
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "medium"
+    },
+    "usage": 2
+  },
+  {
+    "type": "lab.alpenglow-ridges",
+    "label": "Alpenglow Ridges",
+    "family": "Lab",
+    "category": "Lab",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "haze",
+        "label": "Atmospheric Haze",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.45
+      },
+      {
+        "key": "glow",
+        "label": "Alpenglow Intensity",
+        "min": 0,
+        "max": 1.5,
+        "step": 0.01,
+        "default": 0.85
+      },
+      {
+        "key": "drift",
+        "label": "Ridge Drift",
+        "min": -1.5,
+        "max": 1.5,
+        "step": 0.01,
+        "default": 0.25
+      },
+      {
+        "key": "ruggedness",
+        "label": "Peak Ruggedness",
+        "min": 0.6,
+        "max": 2.2,
+        "step": 0.01,
+        "default": 1.25
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "lab"
+      ],
+      "cost": "light"
+    },
+    "usage": 0,
+    "status": "curated"
+  },
+  {
+    "type": "lab.glacier-crevasse",
+    "label": "Glacier Crevasse",
+    "family": "Lab",
+    "category": "Lab",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "flow",
+        "label": "Flow Speed",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.25
+      },
+      {
+        "key": "scale",
+        "label": "Fissure Scale",
+        "min": 1,
+        "max": 8,
+        "step": 0.01,
+        "default": 3.5
+      },
+      {
+        "key": "depth",
+        "label": "Crevasse Depth",
+        "min": 0.2,
+        "max": 2,
+        "step": 0.01,
+        "default": 1
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "lab"
+      ],
+      "cost": "light"
+    },
+    "usage": 0,
+    "status": "curated"
+  },
+  {
+    "type": "lab.moire",
+    "label": "Lab Moire",
+    "family": "Lab",
+    "category": "Lab",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "spacing",
+        "label": "Spacing",
+        "min": 8,
+        "max": 80,
+        "step": 0.01,
+        "default": 34
+      },
+      {
+        "key": "angle",
+        "label": "Angle",
+        "min": -3.1416,
+        "max": 3.1416,
+        "step": 0.01,
+        "default": 0.42
+      },
+      {
+        "key": "drift",
+        "label": "Drift",
+        "min": -4,
+        "max": 4,
+        "step": 0.01,
+        "default": 0.8
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "lab"
+      ],
+      "cost": "light"
+    },
+    "usage": 0,
+    "status": "curated"
+  },
+  {
+    "type": "lab.ripple",
+    "label": "Lab Ripple",
+    "family": "Lab",
+    "category": "Lab",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "amount",
+        "label": "Amount",
+        "min": 0,
+        "max": 0.12,
+        "step": 0.01,
+        "default": 0.035
+      },
+      {
+        "key": "rings",
+        "label": "Rings",
+        "min": 2,
+        "max": 28,
+        "step": 0.01,
+        "default": 12
+      },
+      {
+        "key": "speed",
+        "label": "Speed",
+        "min": -4,
+        "max": 4,
+        "step": 0.01,
+        "default": 1.2
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "lab",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 0,
+    "status": "curated"
+  },
+  {
+    "type": "lab.starry-alpine-lake",
+    "label": "Starry Alpine Lake",
+    "family": "Lab",
+    "category": "Lab",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "milkyWay",
+        "label": "Milky Way Intensity",
+        "min": 0,
+        "max": 1.8,
+        "step": 0.01,
+        "default": 0.9
+      },
+      {
+        "key": "twinkle",
+        "label": "Star Twinkle",
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "default": 1.1
+      },
+      {
+        "key": "waterRipples",
+        "label": "Water Ripples",
+        "min": 0,
+        "max": 1.5,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "reflection",
+        "label": "Reflection Clarity",
+        "min": 0.2,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.78
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "lab"
+      ],
+      "cost": "light"
+    },
+    "usage": 0,
+    "status": "curated"
+  },
+  {
+    "type": "lattice",
+    "label": "Lattice Choir",
+    "family": "Waves & Interference",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "density",
+        "label": "Cell density",
+        "min": 4,
+        "max": 48,
+        "step": 1,
+        "default": 18
+      },
+      {
+        "key": "fold",
+        "label": "Field warp",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.45
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 7
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "ratio",
+        "label": "Interference ratio",
+        "min": 0.25,
+        "max": 4,
+        "step": 0.01,
+        "default": 1.5
+      },
+      {
+        "key": "morph",
+        "label": "Grid / dots / rings",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.55
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "lfo",
+    "label": "LFO",
+    "family": "Modulators",
+    "category": "Modulation",
+    "inputPorts": [],
+    "outputPorts": [
+      "value"
+    ],
+    "params": [
+      {
+        "key": "shape",
+        "label": "Waveform",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "rate",
+        "label": "Rate (Hz)",
+        "min": 0.01,
+        "max": 20,
+        "step": 0.01,
+        "default": 0.25
+      },
+      {
+        "key": "sync",
+        "label": "Tempo sync",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "beats",
+        "label": "Beats per cycle",
+        "min": 0.125,
+        "max": 64,
+        "step": 0.125,
+        "default": 8
+      },
+      {
+        "key": "phase",
+        "label": "Phase",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 20
+  },
+  {
+    "type": "mixer",
+    "label": "Mixer",
+    "family": "Mix & Mask",
+    "category": "Utility",
+    "inputPorts": [
+      "a",
+      "b"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "mix",
+        "label": "Crossfade",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input",
+        "extra-inputs"
+      ],
+      "cost": "light"
+    },
+    "usage": 0
+  },
+  {
+    "type": "mixer4",
+    "label": "Four-channel Mixer",
+    "family": "Mix & Mask",
+    "category": "Utility",
+    "inputPorts": [
+      "a",
+      "b",
+      "c",
+      "d"
+    ],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "levelA",
+        "label": "Channel A",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "levelB",
+        "label": "Channel B",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "levelC",
+        "label": "Channel C",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "levelD",
+        "label": "Channel D",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "master",
+        "label": "Master level",
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "blend",
+        "label": "Blend mode",
+        "min": 0,
+        "max": 4,
+        "step": 1,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input",
+        "extra-inputs"
+      ],
+      "cost": "light"
+    },
+    "usage": 3
+  },
+  {
+    "type": "multigrid",
+    "label": "Multigrid Zellige",
+    "family": "Geometry & Tilings",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "symmetry",
+        "label": "Symmetry N",
+        "min": 3,
+        "max": 11,
+        "step": 1,
+        "default": 5
+      },
+      {
+        "key": "seed",
+        "label": "Grid seed",
+        "min": 0,
+        "max": 65535,
+        "step": 1,
+        "default": 7
+      },
+      {
+        "key": "size",
+        "label": "Tiles per screen height",
+        "min": 3,
+        "max": 40,
+        "step": 0.01,
+        "default": 12
+      },
+      {
+        "key": "phasonX",
+        "label": "Phason X",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "phasonY",
+        "label": "Phason Y",
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "flip",
+        "label": "Phason orbit (tile flips)",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "pan",
+        "label": "Pan orbit (tiles)",
+        "min": 0,
+        "max": 12,
+        "step": 0.01,
+        "default": 2
+      },
+      {
+        "key": "color",
+        "label": "Color by shape / orientation / structure",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "lines",
+        "label": "Lines: none / strapwork / arcs",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 1,
+        "optionLabels": [
+          "none",
+          "strapwork",
+          "arcs"
+        ]
+      },
+      {
+        "key": "grout",
+        "label": "Grout width",
+        "min": 0,
+        "max": 0.3,
+        "step": 0.01,
+        "default": 0.07
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 11,
+        "step": 1,
+        "default": 9
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "medium"
+    },
+    "usage": 4
+  },
+  {
+    "type": "operator",
+    "label": "Operator Bloom",
+    "family": "Waves & Interference",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "mode",
+        "label": "Interaction",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "carrier",
+        "label": "Carrier waveform",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "modulator",
+        "label": "Modulator waveform",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "frequency",
+        "label": "Carrier cycles",
+        "min": 1,
+        "max": 32,
+        "step": 0.01,
+        "default": 8
+      },
+      {
+        "key": "ratio",
+        "label": "Modulator ratio",
+        "min": 0.125,
+        "max": 8,
+        "step": 0.01,
+        "default": 1.5
+      },
+      {
+        "key": "depth",
+        "label": "Modulation depth",
+        "min": 0,
+        "max": 12,
+        "step": 0.01,
+        "default": 2.4
+      },
+      {
+        "key": "angle",
+        "label": "Carrier direction",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "crossing",
+        "label": "Modulator direction",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 1.15
+      },
+      {
+        "key": "offset",
+        "label": "Modulator phase",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "smoothing",
+        "label": "Harmonic smoothing",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.2
+      },
+      {
+        "key": "width",
+        "label": "Contour width",
+        "min": 0.03,
+        "max": 0.6,
+        "step": 0.01,
+        "default": 0.12
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 4
+  },
+  {
+    "type": "orbit",
+    "label": "Orbital Bloom",
+    "family": "Orbits & Contours",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "density",
+        "label": "Orbital shells",
+        "min": 3,
+        "max": 28,
+        "step": 0.1,
+        "default": 12
+      },
+      {
+        "key": "petals",
+        "label": "Petal count",
+        "min": 2,
+        "max": 12,
+        "step": 1,
+        "default": 5
+      },
+      {
+        "key": "morph",
+        "label": "Circle / rosette",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.65
+      },
+      {
+        "key": "fold",
+        "label": "Petal curl",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "orbit",
+        "label": "Center separation",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.3
+      },
+      {
+        "key": "glow",
+        "label": "Halo",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.45
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 5
+  },
+  {
+    "type": "output",
+    "label": "Screen output",
+    "family": "Utilities",
+    "category": "Output",
+    "inputPorts": [
+      "in"
+    ],
+    "outputPorts": [],
+    "params": [],
+    "tags": {
+      "behaviour": [
+        "loopable",
+        "needs-input"
+      ],
+      "cost": "light"
+    },
+    "usage": 52
+  },
+  {
+    "type": "polytope",
+    "label": "4D Polytope",
+    "family": "Fractals & 3D",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "shape",
+        "label": "16-cell / tesseract / 24-cell",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "turns",
+        "label": "4D turns per loop",
+        "min": 0,
+        "max": 4,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "tumble",
+        "label": "3D turns per loop",
+        "min": -3,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "tilt",
+        "label": "4D tilt",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0.6
+      },
+      {
+        "key": "perspective",
+        "label": "4D camera distance",
+        "min": 1.4,
+        "max": 5,
+        "step": 0.01,
+        "default": 2.6
+      },
+      {
+        "key": "zoom",
+        "label": "Zoom",
+        "min": 0.4,
+        "max": 3,
+        "step": 0.01,
+        "default": 1.6
+      },
+      {
+        "key": "thickness",
+        "label": "Line sharpness",
+        "min": 0.3,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "halo",
+        "label": "Halo",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.22
+      },
+      {
+        "key": "depth",
+        "label": "W depth cue",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.65
+      },
+      {
+        "key": "cycles",
+        "label": "Color cycles per loop",
+        "min": 0,
+        "max": 4,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 11,
+        "step": 1,
+        "default": 9
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "medium"
+    },
+    "usage": 3
+  },
+  {
+    "type": "pulse",
+    "label": "Pulse Foundry",
+    "family": "Geometry & Tilings",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "waveform",
+        "label": "Triangle / saw / square / pulse",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "density",
+        "label": "Stencil rows",
+        "min": 2,
+        "max": 12,
+        "step": 1,
+        "default": 5
+      },
+      {
+        "key": "duty",
+        "label": "Rise / pulse duty",
+        "min": 0.15,
+        "max": 0.85,
+        "step": 0.01,
+        "default": 0.38
+      },
+      {
+        "key": "hold",
+        "label": "Ratchet hold",
+        "min": 0,
+        "max": 0.85,
+        "step": 0.01,
+        "default": 0.4
+      },
+      {
+        "key": "cut",
+        "label": "Cut size",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.58
+      },
+      {
+        "key": "operation",
+        "label": "Union / intersect / subtract",
+        "min": 0,
+        "max": 2,
+        "step": 1,
+        "default": 2
+      },
+      {
+        "key": "motion",
+        "label": "Shutter travel",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.72
+      },
+      {
+        "key": "angle",
+        "label": "Stencil angle",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": -0.18
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 5
+  },
+  {
+    "type": "quasicrystal",
+    "label": "Quasicrystal",
+    "family": "Waves & Interference",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "symmetry",
+        "label": "Wave count",
+        "min": 3,
+        "max": 15,
+        "step": 1,
+        "default": 7
+      },
+      {
+        "key": "scale",
+        "label": "Wave frequency",
+        "min": 4,
+        "max": 60,
+        "step": 0.01,
+        "default": 22
+      },
+      {
+        "key": "flow",
+        "label": "Wave cycles per loop",
+        "min": -6,
+        "max": 6,
+        "step": 1,
+        "default": 2
+      },
+      {
+        "key": "twist",
+        "label": "Wave phase spread",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "bands",
+        "label": "Contour bands",
+        "min": 0,
+        "max": 32,
+        "step": 0.01,
+        "default": 16
+      },
+      {
+        "key": "spread",
+        "label": "Color spread",
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "default": 0.9
+      },
+      {
+        "key": "rotation",
+        "label": "Rotation",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "cycles",
+        "label": "Color cycles per loop",
+        "min": 0,
+        "max": 4,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 11,
+        "step": 1,
+        "default": 9
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "resonance",
+    "label": "Resonant Plate",
+    "family": "Waves & Interference",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "modeX",
+        "label": "Mode X",
+        "min": 1,
+        "max": 12,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "modeY",
+        "label": "Mode Y",
+        "min": 1,
+        "max": 12,
+        "step": 1,
+        "default": 5
+      },
+      {
+        "key": "balance",
+        "label": "Mode balance",
+        "min": 0,
+        "max": 1.5,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "exciteX",
+        "label": "Excitation X",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.31
+      },
+      {
+        "key": "exciteY",
+        "label": "Excitation Y",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.43
+      },
+      {
+        "key": "damping",
+        "label": "High-mode damping",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.25
+      },
+      {
+        "key": "width",
+        "label": "Nodal width",
+        "min": 0.003,
+        "max": 0.09,
+        "step": 0.001,
+        "default": 0.022
+      },
+      {
+        "key": "gain",
+        "label": "Excitation gain · ADSR",
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 5
+      },
+      {
+        "key": "offset",
+        "label": "Vibration phase",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 4
+  },
+  {
+    "type": "rules",
+    "label": "Rule Garden",
+    "family": "Simulations",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "seed",
+        "label": "Seed",
+        "min": 0,
+        "max": 65535,
+        "step": 1,
+        "default": 42
+      },
+      {
+        "key": "grid",
+        "label": "Simulation grid",
+        "min": 128,
+        "max": 512,
+        "step": 128,
+        "default": 256
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "states",
+        "label": "Color states",
+        "min": 3,
+        "max": 24,
+        "step": 1,
+        "default": 12
+      },
+      {
+        "key": "threshold",
+        "label": "Neighbor threshold",
+        "min": 1,
+        "max": 8,
+        "step": 1,
+        "default": 1
+      },
+      {
+        "key": "neighborhood",
+        "label": "Moore / cross",
+        "min": 0,
+        "max": 1,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "rate",
+        "label": "Ticks per second",
+        "min": 1,
+        "max": 30,
+        "step": 1,
+        "default": 10
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "stateful"
+      ],
+      "cost": "light"
+    },
+    "usage": 2
+  },
+  {
+    "type": "silk",
+    "label": "Interference Silk",
+    "family": "Waves & Interference",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "fold",
+        "label": "Fold",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.65
+      },
+      {
+        "key": "density",
+        "label": "Thread density",
+        "min": 12,
+        "max": 100,
+        "step": 1,
+        "default": 34
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "layers",
+        "label": "Learning stage",
+        "min": 1,
+        "max": 3,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "offset",
+        "label": "Phase offset",
+        "min": -3.141592653589793,
+        "max": 3.141592653589793,
+        "step": 0.01,
+        "default": 0
+      },
+      {
+        "key": "ratio",
+        "label": "Frequency ratio",
+        "min": 0.25,
+        "max": 4,
+        "step": 0.01,
+        "default": 1.7083333333333333
+      },
+      {
+        "key": "strength",
+        "label": "Pole strength",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "mode",
+        "label": "Pole mode",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 0
+      },
+      {
+        "key": "ax",
+        "label": "Pole A X",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "ay",
+        "label": "Pole A Y",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.45
+      },
+      {
+        "key": "bx",
+        "label": "Pole B X",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.65
+      },
+      {
+        "key": "by",
+        "label": "Pole B Y",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.55
+      },
+      {
+        "key": "crossing",
+        "label": "Line structure",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "angle",
+        "label": "Crossing angle",
+        "min": 0.08726646259971647,
+        "max": 3.0543261909900763,
+        "step": 0.01,
+        "default": 0.9599310885968813
+      },
+      {
+        "key": "mixAmount",
+        "label": "Mutation blend",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 1
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "loopable"
+      ],
+      "cost": "light"
+    },
+    "usage": 8
+  },
+  {
+    "type": "slime",
+    "label": "Slime Mold Wars",
+    "family": "Simulations",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "seed",
+        "label": "Seed",
+        "min": 0,
+        "max": 65535,
+        "step": 1,
+        "default": 42
+      },
+      {
+        "key": "grid",
+        "label": "Simulation grid",
+        "min": 128,
+        "max": 512,
+        "step": 128,
+        "default": 256
+      },
+      {
+        "key": "palette",
+        "label": "Palette",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "default": 6
+      },
+      {
+        "key": "species",
+        "label": "Species",
+        "min": 1,
+        "max": 3,
+        "step": 1,
+        "default": 3
+      },
+      {
+        "key": "agents",
+        "label": "Agent population",
+        "min": 0.1,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.8
+      },
+      {
+        "key": "sensorAngle",
+        "label": "Sensor angle",
+        "min": 0.1,
+        "max": 1.4,
+        "step": 0.01,
+        "default": 0.55
+      },
+      {
+        "key": "sensorDistance",
+        "label": "Sensor distance (cells)",
+        "min": 2,
+        "max": 30,
+        "step": 0.01,
+        "default": 9
+      },
+      {
+        "key": "turn",
+        "label": "Turn speed",
+        "min": 0.05,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.35
+      },
+      {
+        "key": "speed",
+        "label": "Agent speed (cells per step)",
+        "min": 0.3,
+        "max": 3,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "deposit",
+        "label": "Trail deposit",
+        "min": 0.5,
+        "max": 8,
+        "step": 0.01,
+        "default": 3
+      },
+      {
+        "key": "aggression",
+        "label": "Rival repulsion",
+        "min": 0,
+        "max": 3,
+        "step": 0.01,
+        "default": 1.2
+      },
+      {
+        "key": "decay",
+        "label": "Trail persistence",
+        "min": 0.8,
+        "max": 0.995,
+        "step": 0.001,
+        "default": 0.93
+      },
+      {
+        "key": "diffuse",
+        "label": "Trail diffusion",
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "default": 0.5
+      },
+      {
+        "key": "steps",
+        "label": "Steps per tick",
+        "min": 1,
+        "max": 4,
+        "step": 1,
+        "default": 2
+      },
+      {
+        "key": "exposure",
+        "label": "Exposure",
+        "min": 0.2,
+        "max": 4,
+        "step": 0.01,
+        "default": 1
+      }
+    ],
+    "tags": {
+      "behaviour": [
+        "stateful"
+      ],
+      "cost": "heavy"
+    },
+    "usage": 2
+  },
+  {
+    "type": "video",
+    "label": "Video",
+    "family": "Media",
+    "category": "Generators",
+    "inputPorts": [],
+    "outputPorts": [
+      "frame"
+    ],
+    "params": [
+      {
+        "key": "speed",
+        "label": "Playback speed",
+        "min": -4,
+        "max": 4,
+        "step": 0.01,
+        "default": 1
+      },
+      {
+        "key": "start",
+        "label": "Start offset (s)",
+        "min": 0,
+        "max": 600,
+        "step": 0.01,
+        "default": 0
+      }
+    ],
+    "tags": {
+      "behaviour": [],
+      "cost": "light"
+    },
+    "usage": 0
+  }
+]

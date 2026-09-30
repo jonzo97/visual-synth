@@ -1,0 +1,15 @@
+{
+ "title": "Retro Orbit",
+ "blurb": "A 1960s space-age print: ringed planets, googie arches, atomic starbursts and a rocket, slightly misregistered. From the Retro Futurism style.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "space age",
+  "style study"
+ ],
+ "controls": "Sliders: Orbital Speed, Element Density, Print Misregistration · H hides the panel",
+ "tech": "Single-file Canvas",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/042-style-retro-futurism/index.html"
+}

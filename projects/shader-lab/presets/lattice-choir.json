@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Lattice Choir",
+  "nodes": [
+    {"id":"lattice","type":"lattice","position":{"x":0,"y":80},"params":{"density":18,"fold":0.45,"palette":7,"offset":0,"ratio":1.5,"morph":0.8}},
+    {"id":"bloom","type":"fx.glow","position":{"x":240,"y":80},"params":{"amount":0.55}},
+    {"id":"echo","type":"fx.reverb","position":{"x":480,"y":80},"params":{"amount":0.45}},
+    {"id":"output","type":"output","position":{"x":720,"y":80},"params":{}},
+    {"id":"breath","type":"lfo","position":{"x":0,"y":360},"params":{"shape":0,"rate":0.25,"sync":1,"beats":16,"phase":0}}
+  ],
+  "connections": [
+    {"id":"lattice-bloom","from":{"node":"lattice","port":"frame"},"to":{"node":"bloom","port":"in"}},
+    {"id":"bloom-echo","from":{"node":"bloom","port":"frame"},"to":{"node":"echo","port":"in"}},
+    {"id":"echo-output","from":{"node":"echo","port":"frame"},"to":{"node":"output","port":"in"}},
+    {"id":"breath-morph","from":{"node":"breath","port":"value"},"to":{"node":"lattice","port":"param:morph"},"depth":0.2}
+  ],
+  "transport":{"bpm":100,"loopSeconds":12},
+  "events":[]
+}

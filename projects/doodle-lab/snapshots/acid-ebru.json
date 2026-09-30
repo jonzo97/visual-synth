@@ -1,0 +1,14 @@
+{
+ "title": "Acid Ebru",
+ "blurb": "A stained-glass quasicrystal combed into marbled paper, veins and all.",
+ "chain": "Quasicrystal → Ink Marbling",
+ "tags": [
+  "synth snapshot",
+  "quasicrystal"
+ ],
+ "controls": "Knobs: Ink veins, Drag strength, Wave count, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#acid-ebru"
+}

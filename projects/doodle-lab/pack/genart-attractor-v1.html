@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Attractor exposures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Strange attractor exposures (Clifford + de Jong maps).
+  Points are iterated progressively across frames into a Float32 density
+  buffer, tone-mapped with log(1+d), and colored by average step length
+  (how fast the orbit was moving through each pixel).
+*/
+:root {
+  --panel-bg: rgba(12, 30, 48, 0.82);
+  --panel-fg: #e6eff2;
+  --panel-muted: #9bb6c4;
+  --accent: #cfe3ea;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(12, 30, 48, 0.82); } }
+:root[data-theme="dark"] { --panel-bg: rgba(12, 30, 48, 0.82); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+html, body { height: 100%; margin: 0; }
+body { background: #0f2e4c; overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.panel {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(290px, calc(100vw - 24px)); background: var(--panel-bg); color: var(--panel-fg);
+  border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4;
+}
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary .count { font-weight: 400; color: var(--panel-muted); font-variant-numeric: tabular-nums; }
+.body { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 64px 1fr 46px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+select, button {
+  font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+select { flex: 1; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+</style>
+<script src="../tools/lab-shim.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" open>
+  <summary><span>Controls</span><span class="count" id="count">0 points</span></summary>
+  <div class="body">
+    <div class="row">
+      <select id="preset" aria-label="Preset"></select>
+    </div>
+    <label>a <input type="range" id="a" min="-3" max="3" step="0.001"><output id="ao"></output></label>
+    <label>b <input type="range" id="b" min="-3" max="3" step="0.001"><output id="bo"></output></label>
+    <label>c <input type="range" id="c2" min="-3" max="3" step="0.001"><output id="co"></output></label>
+    <label>d <input type="range" id="d" min="-3" max="3" step="0.001"><output id="do"></output></label>
+    <label>Exposure <input type="range" id="exp" min="0.3" max="3" step="0.01" value="1.2"><output id="eo"></output></label>
+    <div class="row">
+      <button id="mutate">Mutate</button>
+      <button id="palette">Change print</button>
+    </div>
+    <div class="hint">Space mutates. Exposure only re-develops, it never restarts the run.</div>
+  </div>
+</details>
+<script>
+(() => {
+  // ---------- Maps ----------
+  const MAPS = {
+    clifford: (a, b, c, d) => (x, y) => [Math.sin(a * y) + c * Math.cos(a * x), Math.sin(b * x) + d * Math.cos(b * y)],
+    dejong:   (a, b, c, d) => (x, y) => [Math.sin(a * y) - Math.cos(b * x), Math.sin(c * x) - Math.cos(d * y)],
+  };
+  // Curated parameter sets known to produce rich structure
+  const PRESETS = [
+    { name: "Clifford: veil", map: "clifford", p: [-1.4, 1.6, 1.0, 0.7] },
+    { name: "Clifford: shell", map: "clifford", p: [1.6, -0.6, -1.2, 1.6] },
+    { name: "Clifford: knot", map: "clifford", p: [1.7, 1.7, 0.06, 1.2] },
+    { name: "Clifford: wings", map: "clifford", p: [1.3, 1.7, 0.5, 1.4] },
+    { name: "de Jong: smoke", map: "dejong", p: [1.4, -2.3, 2.4, -2.1] },
+    { name: "de Jong: orchid", map: "dejong", p: [2.01, -2.53, 1.61, -0.33] },
+    { name: "de Jong: tide", map: "dejong", p: [-2.7, -0.09, -0.86, -2.2] },
+    { name: "de Jong: lace", map: "dejong", p: [-2.24, 0.43, -0.65, -2.43] },
+  ];
+  // Print palettes: paper (background), slow ink, fast ink
+  const PALETTES = [
+    { name: "Cyanotype", bg: [15, 46, 76], slow: [232, 241, 242], fast: [120, 186, 214] },
+    { name: "Van Dyke", bg: [236, 226, 208], slow: [58, 34, 24], fast: [140, 82, 50] },
+    { name: "Platinum", bg: [218, 222, 220], slow: [28, 34, 44], fast: [104, 66, 96] },
+    { name: "Oxblood", bg: [43, 15, 18], slow: [242, 214, 176], fast: [217, 120, 88] },
+  ];
+
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const $ = (id) => document.getElementById(id);
+  const sliders = { a: $("a"), b: $("b"), c: $("c2"), d: $("d") };
+  const outs = { a: $("ao"), b: $("bo"), c: $("co"), d: $("do") };
+
+  let W, H, S, ox, oy;            // canvas size, square buffer size, buffer offset
+  let dens, tsum, grain, img, img32;
+  let mapName = "clifford", params = [...PRESETS[0].p];
+  let step, x, y, bounds, total, dirty, paletteIdx = 0, frame = 0;
+  const TARGET = 80e6;             // stop iterating after this many points
+  const LOG_LUT = new Float32Array(1025);
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.floor(innerWidth * dpr); H = Math.floor(innerHeight * dpr);
+    canvas.width = W; canvas.height = H;
+    S = Math.min(1600, Math.floor(Math.min(W, H) * 0.92));
+    ox = Math.floor((W - S) / 2); oy = Math.floor((H - S) / 2);
+    dens = new Float32Array(S * S); tsum = new Float32Array(S * S);
+    grain = new Float32Array(S * S);
+    for (let i = 0; i < grain.length; i++) grain[i] = (Math.random() - 0.5) * 6; // paper tooth
+    img = ctx.createImageData(S, S); img32 = new Uint32Array(img.data.buffer);
+    restart();
+  }
+
+  // Warm up the orbit and measure bounds so the image is framed tightly
+  function measure(f) {
+    let px = 0.1, py = 0.1, minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
+    const cells = new Set();
+    for (let i = 0; i < 30000; i++) {
+      [px, py] = f(px, py);
+      if (i < 200) continue;
+      if (!isFinite(px) || !isFinite(py)) return null;
+      if (px < minx) minx = px; if (px > maxx) maxx = px;
+      if (py < miny) miny = py; if (py > maxy) maxy = py;
+    }
+    // Degeneracy check: count occupied cells on a coarse grid
+    const sx = maxx - minx, sy = maxy - miny;
+    if (sx < 1e-3 || sy < 1e-3) return null;
+    for (let i = 0; i < 20000; i++) {
+      [px, py] = f(px, py);
+      cells.add(((px - minx) / sx * 63 | 0) * 64 + ((py - miny) / sy * 63 | 0));
+    }
+    return { minx, maxx, miny, maxy, occupied: cells.size, x: px, y: py };
+  }
+
+  function restart() {
+    step = MAPS[mapName](...params);
+    const m = measure(step);
+    dens.fill(0); tsum.fill(0); total = 0; dirty = true;
+    if (!m) { bounds = null; return; }
+    const span = Math.max(m.maxx - m.minx, m.maxy - m.miny) * 1.06;
+    const cx = (m.minx + m.maxx) / 2, cy = (m.miny + m.maxy) / 2;
+    bounds = { minx: cx - span / 2, miny: cy - span / 2, scale: S / span, span };
+    x = m.x; y = m.y;
+  }
+
+  function iterate(budgetMs) {
+    if (!bounds || total >= TARGET) return;
+    const t0 = performance.now();
+    const { minx, miny, scale, span } = bounds;
+    const invV = 2.2 / span;       // normalizes step length to roughly 0..1
+    let px = x, py = y;
+    const [a, b, c, d] = params;
+    const cliff = mapName === "clifford";
+    do {
+      for (let i = 0; i < 40000; i++) {
+        let nx, ny;
+        if (cliff) { nx = Math.sin(a * py) + c * Math.cos(a * px); ny = Math.sin(b * px) + d * Math.cos(b * py); }
+        else { nx = Math.sin(a * py) - Math.cos(b * px); ny = Math.sin(c * px) - Math.cos(d * py); }
+        const dx = nx - px, dy = ny - py;
+        px = nx; py = ny;
+        const ix = ((px - minx) * scale) | 0, iy = ((py - miny) * scale) | 0;
+        if (ix >= 0 && ix < S && iy >= 0 && iy < S) {
+          const k = iy * S + ix;
+          dens[k] += 1;
+          const v = Math.sqrt(dx * dx + dy * dy) * invV;
+          tsum[k] += v > 1 ? 1 : v;
+        }
+      }
+      total += 40000;
+    } while (performance.now() - t0 < budgetMs && total < TARGET);
+    x = px; y = py; dirty = true;
+  }
+
+  function develop() {
+    const P = PALETTES[paletteIdx];
+    const [br, bgc, bb] = P.bg, [sr, sg, sb] = P.slow, [fr, fg, fb] = P.fast;
+    const exposure = +$("exp").value;
+    let max = 0;
+    for (let i = 0; i < dens.length; i++) if (dens[i] > max) max = dens[i];
+    const invLog = max > 0 ? 1 / Math.log1p(max) : 0;
+    // LUT for tone curve: v -> (v^0.8 * exposure), clamped
+    for (let i = 0; i <= 1024; i++) LOG_LUT[i] = Math.min(1, Math.pow(i / 1024, 0.8) * exposure);
+    for (let i = 0; i < dens.length; i++) {
+      const d = dens[i], g = grain[i];
+      let r = br + g, gg = bgc + g, b = bb + g;
+      if (d > 0) {
+        const v = LOG_LUT[(Math.log1p(d) * invLog * 1024) | 0];
+        const t = tsum[i] / d;                 // average speed through this pixel
+        const cr = sr + (fr - sr) * t, cg = sg + (fg - sg) * t, cb = sb + (fb - sb) * t;
+        r += (cr - r) * v; gg += (cg - gg) * v; b += (cb - b) * v;
+      }
+      img32[i] = (255 << 24) | ((b < 0 ? 0 : b > 255 ? 255 : b) << 16) | ((gg < 0 ? 0 : gg > 255 ? 255 : gg) << 8) | (r < 0 ? 0 : r > 255 ? 255 : r);
+    }
+    ctx.fillStyle = `rgb(${br},${bgc},${bb})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.putImageData(img, ox, oy);
+    document.body.style.background = `rgb(${br},${bgc},${bb})`;
+    $("count").textContent = bounds ? `${(total / 1e6).toFixed(1)}M points` : "degenerate orbit";
+  }
+
+  function loop() {
+    iterate(12);
+    frame++;
+    // Developing is the expensive part, so do it every few frames while running
+    if (dirty && (frame % 5 === 0 || total >= TARGET)) { develop(); dirty = false; }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- UI ----------
+  function syncSliders() {
+    ["a", "b", "c", "d"].forEach((k, i) => { sliders[k].value = params[i]; outs[k].textContent = params[i].toFixed(3); });
+    $("eo").textContent = (+$("exp").value).toFixed(2);
+  }
+  const sel = $("preset");
+  PRESETS.forEach((p, i) => sel.add(new Option(p.name, i)));
+  sel.add(new Option("Mutated", "m"));
+  sel.onchange = () => {
+    if (sel.value === "m") return;
+    const p = PRESETS[+sel.value]; mapName = p.map; params = [...p.p]; syncSliders(); restart();
+  };
+  ["a", "b", "c", "d"].forEach((k, i) => sliders[k].addEventListener("input", () => {
+    params[i] = +sliders[k].value; outs[k].textContent = params[i].toFixed(3); sel.value = "m"; restart();
+  }));
+  $("exp").addEventListener("input", () => { $("eo").textContent = (+$("exp").value).toFixed(2); dirty = true; develop(); });
+
+  // Mutate: nudge parameters, reject orbits that collapse to points or cycles
+  function mutate() {
+    for (let tries = 0; tries < 60; tries++) {
+      const cand = params.map(v => Math.max(-3, Math.min(3, v + (Math.random() - 0.5) * 0.5)));
+      const m = measure(MAPS[mapName](...cand));
+      if (m && m.occupied > 900) { params = cand; sel.value = "m"; syncSliders(); restart(); return; }
+    }
+  }
+  $("mutate").onclick = mutate;
+  $("palette").onclick = () => { paletteIdx = (paletteIdx + 1) % PALETTES.length; $("palette").textContent = PALETTES[(paletteIdx + 1) % PALETTES.length].name + " print"; develop(); };
+  $("palette").textContent = PALETTES[1].name + " print";
+  addEventListener("keydown", (e) => { if (e.code === "Space" && e.target.tagName !== "SELECT") { e.preventDefault(); mutate(); } });
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 200); });
+
+  syncSliders();
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+<!-- Clip recorder: captures the canvas (not the controls) via MediaRecorder,
+     then offers the file through the page's downloads capability. -->
+<style>
+.rec { position: fixed; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 10;
+  font: 600 13px "Instrument Sans", system-ui, sans-serif; color: #f3f0ea; background: rgba(20,20,24,0.78);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 18px; padding: 7px 14px; cursor: pointer;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; }
+.rec.on { background: rgba(170, 30, 40, 0.88); }
+.rec:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+</style>
+<button class="rec" id="recBtn" aria-live="polite">Record clip</button>
+<script>
+(() => {
+  const btn = document.getElementById("recBtn");
+  const canvas = document.querySelector("canvas");
+  const LIMIT = 30;                                   // seconds; auto-stops here
+  if (!canvas || !canvas.captureStream || !window.MediaRecorder) return;
+  const TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = TYPES.find(t => MediaRecorder.isTypeSupported(t));
+  if (!mime) return;
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  let downloads = null, rec = null, chunks = [], t0 = 0, tick = null;
+
+  (async () => {
+    if (!window.claude || !window.claude.use) return;
+    downloads = await window.claude.use("downloads");
+    if (downloads) btn.style.display = "block";
+  })();
+
+  function stop() { if (rec && rec.state === "recording") rec.stop(); }
+  btn.onclick = () => {
+    if (rec && rec.state === "recording") return stop();
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 12e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(tick); btn.classList.remove("on"); btn.textContent = "Saving...";
+      const blob = new Blob(chunks, { type: mime });
+      const slug = document.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      try { await downloads.save({ filename: `${slug}-${stamp}.${ext}`, data: blob }); btn.textContent = "Saved"; }
+      catch (e) { btn.textContent = e && e.code === "declined" ? "Not saved" : "Save failed"; }
+      setTimeout(() => { btn.textContent = "Record clip"; }, 2000);
+    };
+    rec.start(250);
+    t0 = performance.now(); btn.classList.add("on"); btn.textContent = "Stop  0 s";
+    tick = setInterval(() => {
+      const s = Math.floor((performance.now() - t0) / 1000);
+      btn.textContent = `Stop  ${s} s`;
+      if (s >= LIMIT) stop();
+    }, 250);
+  };
+})();
+</script>
+
+</body>
+</html>

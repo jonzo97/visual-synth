@@ -1,0 +1,15 @@
+{
+ "title": "Interference Theremin",
+ "blurb": "Play wave interference like a theremin: pointer left and right tunes the spatial frequency, up and down sets the amplitude of the emitters.",
+ "tags": [
+  "gemini",
+  "instrument",
+  "waves",
+  "pointer"
+ ],
+ "controls": "Sliders: Nodal Trapping Force, Chromatic Dispersion, Spatial Frequency · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/022-pointer-theremin-v2/index.html"
+}

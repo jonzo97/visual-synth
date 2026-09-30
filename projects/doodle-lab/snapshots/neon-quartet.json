@@ -1,0 +1,15 @@
+{
+ "title": "Neon Quartet",
+ "blurb": "Four zeros and three poles warped threefold by z³: glowing contours and phase rays spin out of every root.",
+ "chain": "Complex Kaleidoscope (z³ warp) → Glow",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "complex analysis"
+ ],
+ "controls": "Knobs: Handle drift, Phase rays, Glow, Morph · Drag: colour and root spread · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#neon-quartet"
+}

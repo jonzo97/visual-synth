@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "devices": [
+    {
+      "id": "lab.ripple",
+      "name": "Lab Ripple",
+      "kind": "effect",
+      "status": "curated",
+      "description": "A radial ripple displacement that bends the input around the centre.",
+      "params": [
+        {
+          "key": "amount",
+          "label": "Amount",
+          "min": 0,
+          "max": 0.12,
+          "default": 0.035
+        },
+        {
+          "key": "rings",
+          "label": "Rings",
+          "min": 2,
+          "max": 28,
+          "default": 12
+        },
+        {
+          "key": "speed",
+          "label": "Speed",
+          "min": -4,
+          "max": 4,
+          "default": 1.2
+        }
+      ],
+      "wgsl": "const LAB_TAU:f32 = 6.28318530718;\nfn labReflect01(v:f32)->f32 { return 1.0-abs(2.0*fract(v*0.5)-1.0); }\nfn labMain(uv: vec2f) -> vec4f {\n  let base=labInput(uv);\n  let aspect=labAspect();\n  let p=(uv-vec2f(0.5))*vec2f(aspect,1.0);\n  let r=max(length(p),0.0001);\n  let wave=sin(r*labParam(1)*LAB_TAU-labTime()*labParam(2));\n  let falloff=smoothstep(0.72,0.08,r);\n  let q=uv+normalize(p)/vec2f(aspect,1.0)*wave*labParam(0)*falloff;\n  let sample=labInput(vec2f(labReflect01(q.x),labReflect01(q.y)));\n  return vec4f(mix(base.rgb,sample.rgb,0.85),base.a);\n}",
+      "source": {
+        "tool": "hand",
+        "run": "g3-seed",
+        "model": "codex"
+      },
+      "added": "2026-09-24"
+    },
+    {
+      "id": "lab.moire",
+      "name": "Lab Moire",
+      "kind": "source",
+      "status": "curated",
+      "description": "Two drifting rotated line gratings that produce moire interference.",
+      "params": [
+        {
+          "key": "spacing",
+          "label": "Spacing",
+          "min": 8,
+          "max": 80,
+          "default": 34
+        },
+        {
+          "key": "angle",
+          "label": "Angle",
+          "min": -3.1416,
+          "max": 3.1416,
+          "default": 0.42
+        },
+        {
+          "key": "drift",
+          "label": "Drift",
+          "min": -4,
+          "max": 4,
+          "default": 0.8
+        }
+      ],
+      "wgsl": "const LAB_TAU:f32 = 6.28318530718;\nfn labStripe(p:vec2f, a:f32, spacing:f32, t:f32)->f32 {\n  let axis=vec2f(cos(a),sin(a));\n  return 0.5+0.5*cos(dot(p,axis)*spacing+t);\n}\nfn labMain(uv: vec2f) -> vec4f {\n  let p=(uv-vec2f(0.5))*vec2f(labAspect(),1.0);\n  let spacing=labParam(0);\n  let angle=labParam(1);\n  let t=labTime()*labParam(2);\n  let a=labStripe(p,angle,spacing,t);\n  let b=labStripe(p,-angle+0.24,spacing*1.07,-t*0.73);\n  let lines=smoothstep(0.42,0.78,a)*smoothstep(0.35,0.82,b);\n  let glow=pow(abs(a-b),0.55);\n  let col=mix(vec3f(0.02,0.025,0.03),vec3f(0.15,0.75,0.9),lines)+vec3f(0.95,0.42,0.18)*glow*0.45;\n  return vec4f(col,1.0);\n}",
+      "source": {
+        "tool": "hand",
+        "run": "g3-seed",
+        "model": "codex"
+      },
+      "added": "2026-09-24"
+    },
+    {
+      "id": "lab.alpenglow-ridges",
+      "name": "Alpenglow Ridges",
+      "kind": "source",
+      "status": "curated",
+      "description": "Layered mountain ridgeline silhouettes illuminated by the warm shifting gradient of alpine alpenglow.",
+      "params": [
+        {
+          "key": "haze",
+          "label": "Atmospheric Haze",
+          "min": 0,
+          "max": 1,
+          "default": 0.45
+        },
+        {
+          "key": "glow",
+          "label": "Alpenglow Intensity",
+          "min": 0,
+          "max": 1.5,
+          "default": 0.85
+        },
+        {
+          "key": "drift",
+          "label": "Ridge Drift",
+          "min": -1.5,
+          "max": 1.5,
+          "default": 0.25
+        },
+        {
+          "key": "ruggedness",
+          "label": "Peak Ruggedness",
+          "min": 0.6,
+          "max": 2.2,
+          "default": 1.25
+        }
+      ],
+      "wgsl": "const LAB_TAU: f32 = 6.28318530718;\n\nfn labHash11(x: f32) -> f32 {\n  return fract(sin(x * 127.1) * 43758.5453);\n}\n\nfn labNoise1D(x: f32) -> f32 {\n  let i = floor(x);\n  let f = fract(x);\n  let u = f * f * (3.0 - 2.0 * f);\n  return mix(labHash11(i), labHash11(i + 1.0), u);\n}\n\nfn labRidgeFbm(x: f32, rugged: f32) -> f32 {\n  var v: f32 = 0.0;\n  var a: f32 = 0.55;\n  var freq: f32 = 1.0;\n  for (var i = 0; i < 5; i++) {\n    let n = labNoise1D(x * freq);\n    let peak = 1.0 - abs(n - 0.5) * 2.0;\n    v = v + pow(max(peak, 0.0), rugged) * a;\n    freq = freq * 2.15;\n    a = a * 0.48;\n  }\n  return v;\n}\n\nfn labMain(uv: vec2f) -> vec4f {\n  let aspect = labAspect();\n  let p = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);\n  let haze = labParam(0);\n  let glow = labParam(1);\n  let t = labTime() * labParam(2) * 0.05;\n  let rugged = labParam(3);\n\n  let skyY = clamp(p.y + 0.5, 0.0, 1.0);\n  let skyTop = vec3f(0.06, 0.06, 0.18);\n  let skyMid = vec3f(0.48, 0.16, 0.36);\n  let skyLow = vec3f(0.96, 0.46, 0.28);\n  let skyHorizon = vec3f(1.0, 0.78, 0.52);\n\n  var sky = mix(skyHorizon, skyLow, smoothstep(0.2, 0.55, skyY));\n  sky = mix(sky, skyMid, smoothstep(0.55, 0.8, skyY));\n  sky = mix(sky, skyTop, smoothstep(0.8, 1.0, skyY));\n\n  let sunPos = vec2f(0.18 * aspect, 0.05);\n  let sunDist = length(p - sunPos);\n  let sunGlow = exp(-sunDist * 2.8) * vec3f(1.0, 0.72, 0.42) * glow;\n  sky = sky + sunGlow;\n\n  var col = sky;\n\n  let y0 = -0.02 + 0.22 * labRidgeFbm(p.x * 0.9 + t * 0.15 + 1.2, rugged * 0.9);\n  let col0 = mix(vec3f(0.42, 0.22, 0.38), vec3f(0.85, 0.48, 0.4), haze * 0.6);\n  let rim0 = smoothstep(0.015, 0.0, abs(p.y - y0)) * vec3f(1.0, 0.75, 0.55) * glow * 0.6;\n  if (p.y < y0) { col = col0 + rim0; }\n\n  let y1 = -0.12 + 0.25 * labRidgeFbm(p.x * 1.4 - t * 0.28 + 5.7, rugged);\n  let col1 = mix(vec3f(0.24, 0.12, 0.26), vec3f(0.72, 0.34, 0.36), haze * 0.4);\n  let rim1 = smoothstep(0.018, 0.0, abs(p.y - y1)) * vec3f(1.0, 0.68, 0.5) * glow * 0.7;\n  if (p.y < y1) { col = col1 + rim1; }\n\n  let y2 = -0.24 + 0.28 * labRidgeFbm(p.x * 2.0 + t * 0.45 + 11.3, rugged * 1.1);\n  let col2 = mix(vec3f(0.12, 0.07, 0.18), vec3f(0.48, 0.2, 0.28), haze * 0.25);\n  let rim2 = smoothstep(0.02, 0.0, abs(p.y - y2)) * vec3f(0.95, 0.55, 0.45) * glow * 0.5;\n  if (p.y < y2) { col = col2 + rim2; }\n\n  let y3 = -0.38 + 0.30 * labRidgeFbm(p.x * 2.8 - t * 0.65 + 23.1, rugged * 1.2);\n  let col3 = vec3f(0.04, 0.03, 0.08);\n  if (p.y < y3) { col = col3; }\n\n  let mist = smoothstep(0.1, -0.45, p.y) * haze * 0.35;\n  col = mix(col, vec3f(0.85, 0.55, 0.5), mist);\n\n  return vec4f(col, 1.0);\n}",
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "projects/gemini-lab/devices",
+        "model": "gemini-3.8-flash-high"
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "lab.starry-alpine-lake",
+      "name": "Starry Alpine Lake",
+      "kind": "source",
+      "status": "curated",
+      "description": "Still mirror-like alpine lake reflecting towering snowy peaks under a pristine glittering Milky Way sky.",
+      "params": [
+        {
+          "key": "milkyWay",
+          "label": "Milky Way Intensity",
+          "min": 0,
+          "max": 1.8,
+          "default": 0.9
+        },
+        {
+          "key": "twinkle",
+          "label": "Star Twinkle",
+          "min": 0,
+          "max": 2,
+          "default": 1.1
+        },
+        {
+          "key": "waterRipples",
+          "label": "Water Ripples",
+          "min": 0,
+          "max": 1.5,
+          "default": 0.6
+        },
+        {
+          "key": "reflection",
+          "label": "Reflection Clarity",
+          "min": 0.2,
+          "max": 1,
+          "default": 0.78
+        }
+      ],
+      "wgsl": "fn labSq(v: f32) -> f32 { return v * v; }\nfn labCloudNoise(p: vec2f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  let a = fract(sin(dot(i, vec2f(12.9898, 78.233))) * 43758.5453);\n  let b = fract(sin(dot(i + vec2f(1.0, 0.0), vec2f(12.9898, 78.233))) * 43758.5453);\n  let c = fract(sin(dot(i + vec2f(0.0, 1.0), vec2f(12.9898, 78.233))) * 43758.5453);\n  let d = fract(sin(dot(i + vec2f(1.0, 1.0), vec2f(12.9898, 78.233))) * 43758.5453);\n  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nfn labMountainProfile(x: f32) -> f32 {\n  let p1 = exp(-labSq((x - 0.2) * 4.5)) * 0.38;\n  let p2 = exp(-labSq((x + 0.45) * 3.4)) * 0.32;\n  let p3 = exp(-labSq((x - 0.72) * 5.0)) * 0.26;\n  let p4 = exp(-labSq((x + 0.85) * 4.2)) * 0.28;\n  let ridges = 0.035 * sin(x * 24.0) + 0.018 * cos(x * 52.0);\n  return -0.06 + p1 + p2 + p3 + p4 + ridges;\n}\n\nfn labStars(p: vec2f, twinkleRate: f32, t: f32) -> vec3f {\n  let grid = p * 42.0;\n  let i = floor(grid);\n  let f = fract(grid);\n  let rand = fract(sin(dot(i, vec2f(12.9898, 78.233))) * 43758.5453);\n  let starPos = vec2f(\n    fract(sin(rand * 91.34) * 43758.5453),\n    fract(cos(rand * 53.21) * 43758.5453)\n  );\n  let d = length(f - starPos);\n  let bright = pow(rand, 18.0) * 12.0;\n  let tw = 0.5 + 0.5 * sin(t * twinkleRate * 3.0 + rand * 6.28);\n  let star = smoothstep(0.08, 0.01, d) * bright * tw;\n  let tint = mix(vec3f(0.7, 0.85, 1.0), vec3f(1.0, 0.9, 0.75), fract(rand * 7.0));\n  return tint * star;\n}\n\nfn labEvaluateSky(p: vec2f, milkyWay: f32, twinkle: f32, t: f32) -> vec3f {\n  let sky = mix(vec3f(0.012, 0.02, 0.05), vec3f(0.005, 0.008, 0.02), clamp(p.y + 0.5, 0.0, 1.0));\n\n  let mwCoord = p.x * 0.707 + p.y * 0.707;\n  let mwBand = exp(-labSq((mwCoord - 0.12) * 3.2));\n  let mwNoise = labCloudNoise(p * 5.0) * 0.6 + labCloudNoise(p * 12.0) * 0.4;\n  let mwGlow = mwBand * mwNoise * milkyWay * vec3f(0.32, 0.42, 0.78);\n\n  let stars = labStars(p, twinkle, t);\n  var col = sky + mwGlow + stars;\n\n  let mY = labMountainProfile(p.x);\n  if (p.y < mY) {\n    let isSnow = step(mY - 0.14, p.y) * (0.6 + 0.4 * sin(p.x * 35.0 + p.y * 25.0));\n    col = mix(vec3f(0.06, 0.07, 0.12), vec3f(0.55, 0.65, 0.85), isSnow * 0.5);\n  }\n\n  return col;\n}\n\nfn labMain(uv: vec2f) -> vec4f {\n  let aspect = labAspect();\n  let p = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);\n  let milkyWay = labParam(0);\n  let twinkle = labParam(1);\n  let waterRipples = labParam(2);\n  let reflection = labParam(3);\n\n  let waterY = -0.08;\n  let t = labTime();\n\n  var col = vec3f(0.0);\n\n  if (p.y >= waterY) {\n    col = labEvaluateSky(p, milkyWay, twinkle, t);\n  } else {\n    let depth = waterY - p.y;\n    let wave1 = sin(p.x * 30.0 + depth * 55.0 - t * 1.8);\n    let wave2 = cos(p.x * 20.0 - depth * 35.0 + t * 1.3);\n    let wave = (wave1 + wave2) * 0.5;\n\n    let sampleP = vec2f(\n      p.x + wave * 0.012 * waterRipples,\n      waterY + depth + wave * 0.02 * waterRipples\n    );\n\n    let reflected = labEvaluateSky(sampleP, milkyWay, twinkle, t);\n    let lakeWater = vec3f(0.01, 0.025, 0.05);\n\n    col = mix(lakeWater, reflected, reflection * 0.85);\n\n    let shimmer = pow(max(0.0, wave), 4.0) * 0.15 * waterRipples;\n    col = col + vec3f(0.6, 0.75, 0.95) * shimmer;\n  }\n\n  return vec4f(col, 1.0);\n}",
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "projects/gemini-lab/devices",
+        "model": "gemini-3.8-flash-high"
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "lab.glacier-crevasse",
+      "name": "Glacier Crevasse",
+      "kind": "source",
+      "status": "curated",
+      "description": "A slow-flowing alpine glacier cut by deep cyan crevasses, shear fractures, and moraine dust.",
+      "params": [
+        {
+          "key": "flow",
+          "label": "Flow Speed",
+          "min": -1,
+          "max": 1,
+          "default": 0.25
+        },
+        {
+          "key": "scale",
+          "label": "Fissure Scale",
+          "min": 1,
+          "max": 8,
+          "default": 3.5
+        },
+        {
+          "key": "depth",
+          "label": "Crevasse Depth",
+          "min": 0.2,
+          "max": 2,
+          "default": 1
+        }
+      ],
+      "wgsl": "fn labHash(p: vec2f) -> f32 {\n  let h = dot(p, vec2f(127.1, 311.7));\n  return fract(sin(h) * 43758.5453123);\n}\n\nfn labNoise(p: vec2f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  let a = labHash(i);\n  let b = labHash(i + vec2f(1.0, 0.0));\n  let c = labHash(i + vec2f(0.0, 1.0));\n  let d = labHash(i + vec2f(1.0, 1.0));\n  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nfn labFbm(p: vec2f) -> f32 {\n  var v = 0.5 * labNoise(p);\n  let p2 = p * 2.02 + vec2f(13.1, 17.4);\n  v += 0.25 * labNoise(p2);\n  let p3 = p2 * 2.03 + vec2f(27.3, 41.2);\n  v += 0.125 * labNoise(p3);\n  return v;\n}\n\nfn labMain(uv: vec2f) -> vec4f {\n  let aspect = labAspect();\n  let p = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);\n  let speed = labParam(0) * 0.12;\n  let t = labTime() * speed;\n  let valleyFlow = p.y - t * max(0.2, 1.0 - 0.45 * p.x * p.x);\n\n  let warp = labFbm(vec2f(p.x * 2.2, valleyFlow * 1.6));\n  let scale = labParam(1);\n  let depthParam = labParam(2);\n\n  let chevron = valleyFlow - 0.28 * p.x * p.x;\n  let crackPhase = (chevron + warp * 0.28) * scale * 2.6;\n  let fissureWave = sin(crackPhase * 6.2831853);\n  let fissure = pow(smoothstep(0.48, 0.98, fissureWave), 1.6) * depthParam;\n\n  let wallShear = smoothstep(0.2, 0.68, abs(p.x));\n  let shearPhase = (valleyFlow * 2.0 + sign(p.x) * p.x * 1.7 + warp * 0.32) * scale * 2.1;\n  let shearCrack = pow(smoothstep(0.52, 0.98, sin(shearPhase * 6.2831853)), 1.8) * wallShear * depthParam;\n\n  let totalCrevasse = clamp(max(fissure, shearCrack), 0.0, 1.0);\n\n  let deepAbyss = vec3f(0.012, 0.035, 0.08);\n  let iceGlow = vec3f(0.04, 0.68, 0.86);\n  let crevasseCol = mix(iceGlow, deepAbyss, smoothstep(0.35, 0.95, totalCrevasse));\n\n  let surfaceSnow = vec3f(0.91, 0.95, 0.98);\n  let blueIce = vec3f(0.56, 0.74, 0.88);\n  let surfaceWaves = sin(p.x * 11.0 + valleyFlow * 3.8) * 0.5 + 0.5;\n  var surfaceCol = mix(blueIce, surfaceSnow, surfaceWaves * 0.55 + 0.45 * warp);\n\n  let moraine = smoothstep(0.48, 0.85, abs(p.x)) * (0.45 + 0.55 * labNoise(vec2f(p.x * 24.0, valleyFlow * 6.0)));\n  surfaceCol = mix(surfaceCol, vec3f(0.34, 0.32, 0.31), moraine * 0.75);\n\n  let lipHighlight = smoothstep(0.04, 0.16, totalCrevasse) * smoothstep(0.32, 0.12, totalCrevasse);\n  let rimCol = vec3f(0.96, 0.99, 1.0);\n\n  var col = mix(surfaceCol, crevasseCol, smoothstep(0.08, 0.65, totalCrevasse));\n  col += rimCol * lipHighlight * 0.65;\n\n  let meltWave = sin(valleyFlow * 7.5 + p.x * 3.5 + warp * 2.2);\n  let meltPool = smoothstep(0.72, 0.9, meltWave) * (1.0 - totalCrevasse) * (1.0 - moraine);\n  col = mix(col, vec3f(0.01, 0.86, 0.92), meltPool * 0.5);\n\n  let dist = length(p);\n  col *= smoothstep(1.25, 0.35, dist);\n\n  return vec4f(col, 1.0);\n}",
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "projects/gemini-lab/devices",
+        "model": "gemini-3.8-flash-high"
+      },
+      "added": "2026-09-25"
+    }
+  ]
+}

@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Refracting Aqua Glass Spheres v2</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #02070f;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #ui-overlay {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    background: rgba(3, 16, 28, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(0, 229, 255, 0.4);
+    border-radius: 12px;
+    padding: 16px 20px;
+    color: #e0f7fa;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.65), 0 0 15px rgba(0, 229, 255, 0.2);
+    z-index: 100;
+    user-select: none;
+    width: 255px;
+  }
+  #ui-overlay h1 {
+    margin: 0 0 14px 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #00e5ff;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+  }
+  .control-row {
+    margin-bottom: 12px;
+  }
+  .control-row:last-child {
+    margin-bottom: 0;
+  }
+  .control-row label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #b2ebf2;
+  }
+  .control-row label span {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #76ff03;
+    font-weight: 600;
+  }
+  .control-row input[type="range"] {
+    display: block;
+    width: 100%;
+    height: 6px;
+    background: rgba(0, 136, 255, 0.25);
+    border-radius: 3px;
+    outline: none;
+    accent-color: #00e5ff;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+
+<div id="ui-overlay">
+  <h1>Refracting Aqua Glass Spheres v2</h1>
+  <div class="control-row">
+    <label for="sl-wave">Wave Height: <span id="val-wave">0.08</span></label>
+    <input type="range" id="sl-wave" min="0.01" max="0.20" step="0.01" value="0.08">
+  </div>
+  <div class="control-row">
+    <label for="sl-caustic">Caustic Glow: <span id="val-caustic">1.00</span></label>
+    <input type="range" id="sl-caustic" min="0.00" max="2.50" step="0.05" value="1.00">
+  </div>
+  <div class="control-row">
+    <label for="sl-ior">Refraction Index: <span id="val-ior">1.33</span></label>
+    <input type="range" id="sl-ior" min="1.00" max="2.00" step="0.01" value="1.33">
+  </div>
+</div>
+
+<script>
+window.__frames = 0;
+
+// Deterministic Seed Handling
+const urlParams = new URLSearchParams(window.location.search);
+const seedParam = parseInt(urlParams.get('seed') || '1', 10);
+const seed = isNaN(seedParam) ? 1 : seedParam;
+
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(seed);
+
+// Harmoniously Balanced Multi-Planar Spheres Composition
+const NUM_BUBBLES = 16;
+const bubbles = [];
+
+const anchors = [
+  { x: -0.12, y:  0.18, z:  0.15, r: 0.58 }, // Central hero glass sphere
+  { x:  0.86, y:  0.46, z:  0.48, r: 0.40 }, // Upper-right companion
+  { x: -0.92, y: -0.22, z: -0.25, r: 0.44 }, // Lower-left sphere casting sharp caustic on water
+  { x:  0.42, y: -0.16, z:  0.30, r: 0.35 }, // Center-right lower sphere casting water caustic
+  { x: -0.68, y:  0.50, z:  0.65, r: 0.32 }, // Mid-left elevated sphere
+  { x: -0.20, y:  0.84, z:  0.85, r: 0.28 }, // High center-left sphere
+  { x:  1.30, y:  0.75, z:  1.10, r: 0.34 }, // Upper-right background sphere
+  { x: -1.42, y:  0.16, z:  0.45, r: 0.30 }, // Mid-left horizon accent
+  { x:  0.10, y: -0.36, z: -0.05, r: 0.28 }, // Center-low water skimmer
+  { x:  1.12, y: -0.24, z:  0.20, r: 0.25 }, // Lower-right water skimmer
+  { x:  0.06, y:  0.60, z:  1.35, r: 0.22 }, // Deep background central bubble
+  { x: -0.45, y: -0.06, z: -0.45, r: 0.20 }, // Foreground floating bubble
+  { x:  0.58, y:  0.90, z:  0.90, r: 0.18 }, // High-right satellite
+  { x: -1.15, y:  0.62, z:  0.75, r: 0.19 }, // Mid-depth accent bubble
+  { x: -0.82, y:  1.02, z:  1.20, r: 0.16 }, // Distant upper-left bubble
+  { x:  0.70, y:  0.14, z: -0.20, r: 0.15 }  // Delicate foreground droplet
+];
+
+for (let i = 0; i < NUM_BUBBLES; i++) {
+  const anc = anchors[i];
+  bubbles.push({
+    baseX: anc.x + (rng() - 0.5) * 0.18,
+    baseY: anc.y + (rng() - 0.5) * 0.12,
+    baseZ: anc.z + (rng() - 0.5) * 0.15,
+    radius: anc.r * (0.92 + rng() * 0.16),
+    freqX: 0.25 + rng() * 0.35,
+    freqY: 0.30 + rng() * 0.40,
+    freqZ: 0.20 + rng() * 0.30,
+    ampX: 0.16 + rng() * 0.20,
+    ampY: 0.14 + rng() * 0.18,
+    ampZ: 0.12 + rng() * 0.15,
+    phaseX: rng() * Math.PI * 2,
+    phaseY: rng() * Math.PI * 2,
+    phaseZ: rng() * Math.PI * 2
+  });
+}
+
+const bluffPhases = [
+  rng() * Math.PI * 2,
+  rng() * Math.PI * 2,
+  rng() * Math.PI * 2,
+  rng() * Math.PI * 2
+];
+
+// WebGL2 Setup
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance', antialias: false });
+if (!gl) {
+  throw new Error('WebGL2 is not supported on this device/browser.');
+}
+
+const vsSource = `#version 300 es
+in vec2 a_position;
+out vec2 v_uv;
+
+void main() {
+  v_uv = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+const fsSource = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+#define NUM_BUBBLES 16
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_ior;
+uniform float u_wave_amp;
+uniform float u_caustic_intensity;
+uniform vec2 u_mouse;
+uniform vec4 u_bluff_phase;
+uniform vec4 u_bubble_pos[NUM_BUBBLES];
+
+// Sky, Cumulus Clouds, Sunbeams & Multi-element Lens Flare
+vec3 getSky(vec3 rd) {
+  float y = clamp(rd.y, 0.0, 1.0);
+  vec3 skyTop = vec3(0.0, 0.42, 0.92);      // Deep azure cobalt
+  vec3 skyMid = vec3(0.0, 0.88, 1.0);       // Electric cyan
+  vec3 skyHorizon = vec3(0.82, 0.98, 1.0);  // Warm white-cyan horizon
+  
+  vec3 col = mix(skyMid, skyTop, pow(y, 0.62));
+  col = mix(skyHorizon, col, smoothstep(0.0, 0.32, y));
+  
+  vec3 sunDir = normalize(vec3(0.65, 0.58, 0.85));
+  float cosSun = max(0.0, dot(rd, sunDir));
+  
+  // Sun Disc and Radiant Coronal Glow
+  float sunDisc = smoothstep(0.9986, 0.9998, cosSun);
+  float sunGlow = pow(cosSun, 42.0) * 1.8;
+  float sunWide = pow(cosSun, 8.0) * 0.7;
+  
+  vec3 sunCol = vec3(1.0, 1.0, 0.96) * sunDisc * 4.5;
+  sunCol += vec3(1.0, 0.94, 0.15) * sunGlow;
+  sunCol += vec3(0.1, 0.85, 1.0) * sunWide * 0.65;
+  
+  // Rotating Radiant Sunbeams
+  float angle = atan(rd.y - sunDir.y, rd.x - sunDir.x);
+  float rays = 0.5 + 0.5 * sin(angle * 14.0 + u_time * 0.18) * sin(angle * 8.0 - u_time * 0.12);
+  sunCol += vec3(1.0, 0.97, 0.7) * pow(cosSun, 18.0) * rays * 0.55;
+  
+  // Billowy Frutiger Aero Cumulus Clouds
+  if (rd.y > 0.01) {
+    float tCloud = 5.2 / max(0.02, rd.y);
+    vec2 cloudUv = (rd.xz * tCloud) * 0.032 + vec2(u_time * 0.016, u_time * 0.006);
+    float n1 = sin(cloudUv.x * 2.5 + sin(cloudUv.y * 2.8)) * cos(cloudUv.y * 2.2);
+    float n2 = sin(cloudUv.x * 5.0 - cloudUv.y * 3.8) * 0.5;
+    float n3 = cos(cloudUv.x * 9.5 + cloudUv.y * 8.0) * 0.25;
+    float cloudVal = smoothstep(0.22, 0.82, n1 + n2 + n3);
+    float cloudFade = smoothstep(0.015, 0.28, rd.y);
+    vec3 cloudColor = mix(vec3(0.68, 0.90, 1.0), vec3(1.0, 1.0, 1.0), cloudVal);
+    cloudColor += vec3(1.0, 0.98, 0.8) * pow(cosSun, 12.0) * 0.8; // Silver lining
+    col = mix(col, cloudColor, cloudVal * cloudFade * 0.88);
+  }
+  
+  // Multi-Element Lens Flare
+  vec2 sun2D = sunDir.xy / max(0.2, sunDir.z);
+  vec2 ray2D = rd.xy / max(0.2, rd.z);
+  vec2 flareVec = -sun2D;
+  
+  // 1. Aqua chromatic ring
+  vec2 pRing1 = sun2D + flareVec * 0.42;
+  float dRing1 = length(ray2D - pRing1);
+  float ring1 = smoothstep(0.045, 0.0, abs(dRing1 - 0.24)) * pow(cosSun, 2.5);
+  col += vec3(0.0, 0.92, 1.0) * ring1 * 0.75;
+  
+  // 2. Soft golden bokeh
+  vec2 pGhost2 = sun2D + flareVec * 0.82;
+  float dGhost2 = length(ray2D - pGhost2);
+  float ghost2 = smoothstep(0.18, 0.0, dGhost2) * pow(cosSun, 2.0);
+  col += vec3(1.0, 0.92, 0.1) * ghost2 * 0.45;
+  
+  // 3. Violet-cyan halo
+  vec2 pGhost3 = sun2D + flareVec * 1.35;
+  float dGhost3 = length(ray2D - pGhost3);
+  float ghost3 = smoothstep(0.3, 0.0, dGhost3) * pow(cosSun, 1.8);
+  col += vec3(0.25, 0.55, 1.0) * ghost3 * 0.32;
+
+  return col + sunCol;
+}
+
+// Undulating Gerstner Wavelet Water Surface Height
+float getWaterHeight(vec2 p, float t) {
+  float h = 0.0;
+  
+  // Wave 1: Primary tropical swell
+  vec2 d1 = vec2(0.8, 0.6);
+  float ph1 = dot(d1, p) * 1.6 - t * 1.4;
+  h += sin(ph1) * 0.055;
+  
+  // Wave 2: Opposing diagonal chop
+  vec2 d2 = vec2(-0.6, 0.8);
+  float ph2 = dot(d2, p) * 2.8 - t * 2.1;
+  h += sin(ph2) * 0.028;
+  
+  // Wave 3: Cross ripple
+  vec2 d3 = vec2(0.92, -0.38);
+  float ph3 = dot(d3, p) * 5.4 + t * 2.8;
+  h += sin(ph3) * 0.015;
+  
+  // Wave 4: Fine capillary wavelets
+  vec2 d4 = vec2(-0.4, -0.91);
+  float ph4 = dot(d4, p) * 10.5 - t * 3.6;
+  h += (sin(ph4) * cos(dot(vec2(d4.y, -d4.x), p) * 7.5)) * 0.008;
+  
+  return -0.75 + h * (u_wave_amp / 0.08);
+}
+
+// Analytical Normal of Animated Water Surface
+vec3 getWaterNormal(vec3 p, float t) {
+  vec2 eps = vec2(0.015, 0.0);
+  float h0 = getWaterHeight(p.xz, t);
+  float hx = getWaterHeight(p.xz + eps.xy, t);
+  float hz = getWaterHeight(p.xz + eps.yx, t);
+  return normalize(vec3(h0 - hx, eps.x, h0 - hz));
+}
+
+// Unified World Scene: Reflective Cyan Ocean, Coastal Bluffs, & Sky
+vec3 getScene(vec3 ro, vec3 rd) {
+  vec3 sunDir = normalize(vec3(0.65, 0.58, 0.85));
+  
+  // Distant Tropical Coastal Bluffs at Z = 36.0
+  float tBluff = -1.0;
+  vec3 pBluff = vec3(0.0);
+  float hBluff = -999.0;
+  if (rd.z > 0.01) {
+    tBluff = (36.0 - ro.z) / rd.z;
+    if (tBluff > 0.0) {
+      pBluff = ro + tBluff * rd;
+      hBluff = -0.15 + 0.62 * sin(0.12 * pBluff.x + u_bluff_phase.x) + 0.32 * cos(0.26 * pBluff.x + u_bluff_phase.y);
+    }
+  }
+  
+  // Iterative Ray-Water Intersection
+  float tWater = -1.0;
+  if (rd.y < -0.001) {
+    float tInit = (-0.75 - ro.y) / rd.y;
+    if (tInit > 0.0) {
+      tWater = tInit;
+      for (int step = 0; step < 4; step++) {
+        vec3 pW = ro + tWater * rd;
+        float h = getWaterHeight(pW.xz, u_time);
+        float dt = (h - pW.y) / min(-0.15, rd.y);
+        tWater += clamp(dt, -1.0, 1.0);
+      }
+    }
+  }
+  
+  // Resolve Depth Occlusion between Ocean and Distant Island Bluffs
+  bool hitWater = false;
+  bool hitBluff = false;
+  
+  if (tWater > 0.0) {
+    if (tBluff > 0.0 && pBluff.y < hBluff) {
+      if (tWater < tBluff) {
+        hitWater = true;
+      } else {
+        hitBluff = true;
+      }
+    } else {
+      hitWater = true;
+    }
+  } else if (tBluff > 0.0 && pBluff.y < hBluff) {
+    hitBluff = true;
+  }
+  
+  if (hitWater) {
+    vec3 pWater = ro + tWater * rd;
+    vec3 nWater = getWaterNormal(pWater, u_time);
+    vec3 v = -rd;
+    
+    // Fresnel Reflection
+    float ndotv = max(0.0, dot(nWater, v));
+    float f0 = 0.025;
+    float fresnel = f0 + (1.0 - f0) * pow(1.0 - ndotv, 4.5);
+    
+    // Specular Wave Highlights
+    vec3 hSun = normalize(sunDir + v);
+    float ndotHsun = max(0.0, dot(nWater, hSun));
+    float sunGlint = pow(ndotHsun, 180.0) * 3.8;
+    float waveSheen = pow(ndotHsun, 24.0) * 0.65;
+    
+    // Subsurface Aquatic Scattering
+    vec3 deepOcean = vec3(0.005, 0.18, 0.38); // Deep sapphire
+    vec3 midOcean  = vec3(0.0, 0.62, 0.78);   // Luminous cyan
+    vec3 crestAqua = vec3(0.35, 0.98, 1.0);   // Translucent crest aqua
+    
+    float waveHeightNorm = clamp((pWater.y + 0.85) / 0.25, 0.0, 1.0);
+    vec3 waterBody = mix(deepOcean, midOcean, waveHeightNorm);
+    
+    float sss = pow(max(0.0, dot(rd, -sunDir)), 2.8) * pow(max(0.0, 1.0 - nWater.y), 1.8);
+    waterBody = mix(waterBody, crestAqua, sss * 0.7);
+    
+    // Submerged Seabed Caustics Network
+    vec3 rdSub = refract(rd, nWater, 1.0 / 1.333);
+    if (rdSub.y < -0.01) {
+      float tBed = (-2.0 - pWater.y) / rdSub.y;
+      vec3 pBed = pWater + tBed * rdSub;
+      vec2 bedUv = pBed.xz * 1.5 + vec2(u_time * 0.12, u_time * 0.08);
+      float c1 = sin(bedUv.x * 2.8 + sin(bedUv.y * 2.4)) * 0.5 + 0.5;
+      float c2 = cos(bedUv.x * 2.2 - cos(bedUv.y * 3.1)) * 0.5 + 0.5;
+      float causticsBed = pow(c1 * c2, 1.6) * 2.8;
+      vec3 bedColor = vec3(0.08, 0.78, 0.88) * (0.35 + causticsBed * 0.65);
+      vec3 bedAtten = exp(-vec3(0.42, 0.08, 0.02) * tBed * 1.2);
+      waterBody = mix(waterBody, bedColor * bedAtten, 0.55);
+    }
+    
+    // Dynamic Refractive Caustic Light Patches & Soft Colored Shadows beneath each sphere
+    float shadowFactor = 1.0;
+    vec3 causticAccum = vec3(0.0);
+    
+    for (int i = 0; i < NUM_BUBBLES; i++) {
+      vec3 c = u_bubble_pos[i].xyz;
+      float r = u_bubble_pos[i].w;
+      
+      float tProj = (pWater.y - c.y) / (-sunDir.y);
+      if (tProj > 0.0) {
+        vec3 cProj = c + (-sunDir) * tProj;
+        
+        // Water wavelets modulate and focus the caustic on the surface
+        vec2 waveOffset = nWater.xz * (0.15 + tProj * 0.04);
+        float dist = length((pWater.xz + waveOffset) - cProj.xz);
+        
+        // Soft colored shadow
+        float shadowRadius = r * (1.15 + tProj * 0.3);
+        float sFalloff = smoothstep(shadowRadius * 0.15, shadowRadius * 1.35, dist);
+        shadowFactor *= mix(0.42, 1.0, sFalloff);
+        
+        // Caustic focal spot and rings with Chromatic Dispersion
+        float uDist = dist / (r * 0.82);
+        float cRed   = exp(-pow((uDist - 0.74) * 5.2, 2.0));
+        float cGreen = exp(-pow((uDist - 0.61) * 5.2, 2.0));
+        float cBlue  = exp(-pow((uDist - 0.48) * 5.2, 2.0));
+        float cCore  = exp(-pow(uDist * 2.5, 2.0)) * 2.0;
+        
+        float focus = (r / 0.35) * (1.6 / (0.6 + tProj * 0.75));
+        vec3 sphereCaustic = (vec3(cRed * 1.4, cGreen * 1.6, cBlue * 1.9) + vec3(cCore * 0.85, cCore * 1.1, cCore * 1.25)) * focus;
+        causticAccum += sphereCaustic;
+      }
+    }
+    
+    waterBody *= shadowFactor;
+    waterBody += causticAccum * u_caustic_intensity * vec3(0.35, 1.1, 1.35);
+    
+    // Surface Reflection & Sky Glints
+    vec3 reflDir = reflect(rd, nWater);
+    vec3 skyRefl = getSky(reflDir);
+    
+    vec3 finalWater = mix(waterBody, skyRefl, fresnel);
+    finalWater += vec3(1.0, 1.0, 0.95) * sunGlint;
+    finalWater += vec3(0.1, 0.88, 1.0) * waveSheen;
+    
+    // Atmospheric Horizon Fog
+    float fogT = smoothstep(12.0, 48.0, tWater);
+    vec3 horizCol = getSky(normalize(vec3(rd.x, 0.04, rd.z)));
+    return mix(finalWater, horizCol, fogT);
+  }
+  
+  if (hitBluff) {
+    float dhx = 0.12 * 0.62 * cos(0.12 * pBluff.x + u_bluff_phase.x) - 0.26 * 0.32 * sin(0.26 * pBluff.x + u_bluff_phase.y);
+    vec3 nBluff = normalize(vec3(-dhx, 1.0, 0.35));
+    float diffB = max(0.0, dot(nBluff, sunDir));
+    
+    vec3 bluffCol = mix(vec3(0.01, 0.45, 0.28), vec3(0.12, 0.82, 0.42), diffB);
+    bluffCol = mix(bluffCol, vec3(0.55, 0.98, 0.22), pow(diffB, 2.5) * 0.5);
+    
+    vec3 skyB = getSky(rd);
+    return mix(bluffCol, skyB, 0.58);
+  }
+  
+  return getSky(rd);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+  vec3 ro = vec3((u_mouse.x - 0.5) * 0.7, 0.15 + (u_mouse.y - 0.5) * 0.45, -2.8);
+  vec3 rd = normalize(vec3(uv, 1.65));
+  
+  // Find Nearest Glass Sphere
+  int hitId = -1;
+  float tMin = 1e9;
+  
+  for (int i = 0; i < NUM_BUBBLES; i++) {
+    vec3 c = u_bubble_pos[i].xyz;
+    float r = u_bubble_pos[i].w;
+    vec3 oc = ro - c;
+    float b = dot(rd, oc);
+    float qc = dot(oc, oc) - r * r;
+    float h = b * b - qc;
+    if (h > 0.0) {
+      float t = -b - sqrt(h);
+      if (t > 0.005 && t < tMin) {
+        tMin = t;
+        hitId = i;
+      }
+    }
+  }
+  
+  vec3 finalColor;
+  
+  if (hitId < 0) {
+    finalColor = getScene(ro, rd);
+  } else {
+    vec3 c = u_bubble_pos[hitId].xyz;
+    float r = u_bubble_pos[hitId].w;
+    vec3 p = ro + tMin * rd;
+    vec3 n = normalize(p - c);
+    vec3 v = -rd;
+    float ndotv = max(0.0, dot(n, v));
+    
+    // Two-Pass Spherical Refraction with Chromatic Dispersion
+    float dispersion = 0.032;
+    float iorR = max(1.001, u_ior - dispersion);
+    float iorG = max(1.001, u_ior);
+    float iorB = max(1.001, u_ior + dispersion);
+    
+    // 1. Refract Into Sphere
+    vec3 rdInR = refract(rd, n, 1.0 / iorR);
+    vec3 rdInG = refract(rd, n, 1.0 / iorG);
+    vec3 rdInB = refract(rd, n, 1.0 / iorB);
+    
+    if (dot(rdInR, rdInR) < 0.01) rdInR = reflect(rd, n);
+    if (dot(rdInG, rdInG) < 0.01) rdInG = reflect(rd, n);
+    if (dot(rdInB, rdInB) < 0.01) rdInB = reflect(rd, n);
+    
+    // Internal Chord Lengths
+    float lenR = -2.0 * dot(p - c, rdInR);
+    float lenG = -2.0 * dot(p - c, rdInG);
+    float lenB = -2.0 * dot(p - c, rdInB);
+    
+    vec3 pExitR = p + lenR * rdInR;
+    vec3 pExitG = p + lenG * rdInG;
+    vec3 pExitB = p + lenB * rdInB;
+    
+    vec3 nExitR = (pExitR - c) / r;
+    vec3 nExitG = (pExitG - c) / r;
+    vec3 nExitB = (pExitB - c) / r;
+    
+    // 2. Refract Out of Sphere into Air (Inverted Optics)
+    vec3 rdOutR = refract(rdInR, -nExitR, iorR);
+    vec3 rdOutG = refract(rdInG, -nExitG, iorG);
+    vec3 rdOutB = refract(rdInB, -nExitB, iorB);
+    
+    if (dot(rdOutR, rdOutR) < 0.01) rdOutR = reflect(rdInR, -nExitR);
+    if (dot(rdOutG, rdOutG) < 0.01) rdOutG = reflect(rdInG, -nExitG);
+    if (dot(rdOutB, rdOutB) < 0.01) rdOutB = reflect(rdInB, -nExitB);
+    
+    vec3 refractedColor;
+    refractedColor.r = getScene(pExitR, rdOutR).r;
+    refractedColor.g = getScene(pExitG, rdOutG).g;
+    refractedColor.b = getScene(pExitB, rdOutB).b;
+    
+    // Secondary Nested Glass Sphere Refraction
+    int secondHitId = -1;
+    float t2Min = 1e9;
+    for (int j = 0; j < NUM_BUBBLES; j++) {
+      if (j == hitId) continue;
+      vec3 c2 = u_bubble_pos[j].xyz;
+      float r2 = u_bubble_pos[j].w;
+      vec3 oc2 = pExitG - c2;
+      float b2 = dot(rdOutG, oc2);
+      float qc2 = dot(oc2, oc2) - r2 * r2;
+      float h2 = b2 * b2 - qc2;
+      if (h2 > 0.0) {
+        float t2 = -b2 - sqrt(h2);
+        if (t2 > 0.01 && t2 < t2Min) {
+          t2Min = t2;
+          secondHitId = j;
+        }
+      }
+    }
+    
+    if (secondHitId >= 0) {
+      vec3 c2 = u_bubble_pos[secondHitId].xyz;
+      float r2 = u_bubble_pos[secondHitId].w;
+      vec3 p2 = pExitG + t2Min * rdOutG;
+      vec3 n2 = normalize(p2 - c2);
+      vec3 rdIn2 = refract(rdOutG, n2, 1.0 / iorG);
+      if (dot(rdIn2, rdIn2) < 0.01) rdIn2 = reflect(rdOutG, n2);
+      float len2 = -2.0 * dot(p2 - c2, rdIn2);
+      vec3 pExit2 = p2 + len2 * rdIn2;
+      vec3 nExit2 = (pExit2 - c2) / r2;
+      vec3 rdOut2 = refract(rdIn2, -nExit2, iorG);
+      if (dot(rdOut2, rdOut2) < 0.01) rdOut2 = reflect(rdIn2, -nExit2);
+      
+      vec3 secondCol = getScene(pExit2, rdOut2);
+      secondCol *= exp(-vec3(0.35, 0.06, 0.01) * len2 * 2.2);
+      float ndotv2 = max(0.0, dot(n2, -rdOutG));
+      secondCol += vec3(0.0, 0.9, 1.0) * pow(1.0 - ndotv2, 3.8) * 0.7;
+      refractedColor = mix(refractedColor, secondCol, 0.75);
+    }
+    
+    // Aqua Glass Volumetric Absorption & Inner Glow
+    vec3 aquaFilter = exp(-vec3(0.38, 0.06, 0.01) * lenG * 2.2);
+    refractedColor *= aquaFilter;
+    refractedColor += vec3(0.0, 0.48, 0.72) * pow(1.0 - ndotv, 2.6) * 0.5;
+    
+    // Fresnel Sky Reflection
+    float f0 = pow((1.0 - u_ior) / (1.0 + u_ior), 2.0);
+    float fresnel = f0 + (1.0 - f0) * pow(1.0 - ndotv, 3.5);
+    vec3 reflDir = reflect(rd, n);
+    vec3 reflColor = getSky(reflDir);
+    
+    // Multi-Lobe Skeuomorphic Highlights
+    // 1. Top Glossy Crescent (Vista Aqua orb signature)
+    vec3 lightTop = normalize(vec3(-0.35, 0.78, -0.55));
+    vec3 hTop = normalize(lightTop + v);
+    float ndotHtop = max(0.0, dot(n, hTop));
+    float gloss1 = pow(ndotHtop, 38.0) * 1.6 + pow(ndotHtop, 140.0) * 2.8;
+    float topCap = smoothstep(0.28, 0.85, n.y) * smoothstep(-0.25, 0.65, n.x * -0.5 + n.y) * smoothstep(0.2, 0.8, ndotv);
+    gloss1 += topCap * 0.75;
+    
+    // 2. Bottom Ocean-Bounce Caustic Crescent (reflecting kinetic waves below)
+    vec3 lightBot = normalize(vec3(0.25, -0.85, -0.35));
+    vec3 hBot = normalize(lightBot + v);
+    float ndotHbot = max(0.0, dot(n, hBot));
+    float gloss2 = pow(ndotHbot, 24.0) * 1.1;
+    vec3 oceanBounceCol = vec3(0.0, 0.95, 1.0) * (0.85 + 0.3 * sin(u_time * 2.2 + c.x * 2.5));
+    
+    // 3. Crisp Sun Glint
+    vec3 sunDir = normalize(vec3(0.65, 0.58, 0.85));
+    vec3 hSun = normalize(sunDir + v);
+    float ndotHsun = max(0.0, dot(n, hSun));
+    float sunGlint = pow(ndotHsun, 260.0) * 4.2;
+    
+    // Iridescent Rim Sheen
+    vec3 irid = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + (1.0 - ndotv) * 8.5 + n.y * 3.2);
+    float rimGlow = pow(1.0 - ndotv, 4.5);
+    
+    // Final Composite Glass Sphere
+    finalColor = mix(refractedColor, reflColor, fresnel * 0.75);
+    finalColor += vec3(0.0, 0.92, 1.0) * rimGlow * 1.35;
+    finalColor += irid * rimGlow * 0.55;
+    finalColor += vec3(1.0, 1.0, 1.0) * gloss1;
+    finalColor += oceanBounceCol * gloss2;
+    finalColor += vec3(1.0, 0.98, 0.9) * sunGlint;
+  }
+  
+  // Tone Mapping & Gamma Correction
+  finalColor = finalColor / (1.0 + finalColor * 0.12);
+  finalColor = pow(finalColor, vec3(1.0 / 2.2));
+  
+  fragColor = vec4(finalColor, 1.0);
+}
+`;
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error('Shader compilation failed: ' + info);
+  }
+  return shader;
+}
+
+function createProgram(gl, vs, fs) {
+  const vShader = createShader(gl, gl.VERTEX_SHADER, vs);
+  const fShader = createShader(gl, gl.FRAGMENT_SHADER, fs);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vShader);
+  gl.attachShader(prog, fShader);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(prog);
+    gl.deleteProgram(prog);
+    throw new Error('Program link failed: ' + info);
+  }
+  return prog;
+}
+
+const program = createProgram(gl, vsSource, fsSource);
+
+// Geometry Setup: Full-Screen Triangle
+const quadBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1, -1,
+   3, -1,
+  -1,  3
+]), gl.STATIC_DRAW);
+
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const posLoc = gl.getAttribLocation(program, 'a_position');
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+// Uniform Locations
+const uResLoc = gl.getUniformLocation(program, 'u_resolution');
+const uTimeLoc = gl.getUniformLocation(program, 'u_time');
+const uIorLoc = gl.getUniformLocation(program, 'u_ior');
+const uWaveAmpLoc = gl.getUniformLocation(program, 'u_wave_amp');
+const uCausticLoc = gl.getUniformLocation(program, 'u_caustic_intensity');
+const uMouseLoc = gl.getUniformLocation(program, 'u_mouse');
+const uBluffPhaseLoc = gl.getUniformLocation(program, 'u_bluff_phase');
+const uBubblePosLoc = gl.getUniformLocation(program, 'u_bubble_pos');
+
+const bubbleData = new Float32Array(NUM_BUBBLES * 4);
+
+// Controls & Live Value Updates
+const slWave = document.getElementById('sl-wave');
+const slCaustic = document.getElementById('sl-caustic');
+const slIor = document.getElementById('sl-ior');
+
+const valWave = document.getElementById('val-wave');
+const valCaustic = document.getElementById('val-caustic');
+const valIor = document.getElementById('val-ior');
+
+slWave.addEventListener('input', (e) => {
+  valWave.textContent = parseFloat(e.target.value).toFixed(2);
+});
+slCaustic.addEventListener('input', (e) => {
+  valCaustic.textContent = parseFloat(e.target.value).toFixed(2);
+});
+slIor.addEventListener('input', (e) => {
+  valIor.textContent = parseFloat(e.target.value).toFixed(2);
+});
+
+// Toggle Overlay Visibility with 'h'
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay) {
+      overlay.style.display = (overlay.style.display === 'none') ? 'block' : 'none';
+    }
+  }
+});
+
+// Pointer & Cursor Interaction (<100ms response)
+let mouseX = 0.5;
+let mouseY = 0.5;
+let targetMouseX = 0.5;
+let targetMouseY = 0.5;
+
+function updatePointer(e) {
+  targetMouseX = e.clientX / window.innerWidth;
+  targetMouseY = 1.0 - (e.clientY / window.innerHeight);
+}
+window.addEventListener('pointermove', updatePointer);
+window.addEventListener('pointerdown', updatePointer);
+
+// Responsive Resizing (DPR capped at 2)
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(window.innerWidth * dpr);
+  const h = Math.floor(window.innerHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Smooth Render Loop
+function render(timestamp) {
+  window.__frames++;
+
+  resize();
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(program);
+
+  const t = timestamp * 0.001;
+
+  // Smooth mouse interpolation
+  mouseX += (targetMouseX - mouseX) * 0.14;
+  mouseY += (targetMouseY - mouseY) * 0.14;
+
+  const mouseWorldX = (mouseX - 0.5) * 3.2;
+  const mouseWorldY = (mouseY - 0.5) * 2.0;
+
+  // Update Periodic Harmonic Bubble Motion & Subtle Cursor Repulsion
+  for (let i = 0; i < NUM_BUBBLES; i++) {
+    const b = bubbles[i];
+    let y = b.baseY + Math.sin(t * b.freqY + b.phaseY) * b.ampY + Math.sin(t * b.freqY * 0.5 + b.phaseY * 1.4) * (b.ampY * 0.25);
+    let x = b.baseX + Math.sin(t * b.freqX + b.phaseX) * b.ampX + Math.cos(t * b.freqX * 0.45) * (b.ampX * 0.20);
+    let z = b.baseZ + Math.cos(t * b.freqZ + b.phaseZ) * b.ampZ;
+
+    const dx = x - mouseWorldX;
+    const dy = y - mouseWorldY;
+    const dSq = dx * dx + dy * dy;
+    if (dSq < 0.75 && dSq > 0.0001) {
+      const dist = Math.sqrt(dSq);
+      const push = (0.75 - dist) * 0.22;
+      x += (dx / dist) * push;
+      y += (dy / dist) * push;
+    }
+
+    bubbleData[i * 4 + 0] = x;
+    bubbleData[i * 4 + 1] = y;
+    bubbleData[i * 4 + 2] = z;
+    bubbleData[i * 4 + 3] = b.radius;
+  }
+
+  // Uniform Uploads
+  gl.uniform2f(uResLoc, canvas.width, canvas.height);
+  gl.uniform1f(uTimeLoc, t);
+  gl.uniform1f(uWaveAmpLoc, parseFloat(slWave.value));
+  gl.uniform1f(uCausticLoc, parseFloat(slCaustic.value));
+  gl.uniform1f(uIorLoc, parseFloat(slIor.value));
+  gl.uniform2f(uMouseLoc, mouseX, mouseY);
+  gl.uniform4f(uBluffPhaseLoc, bluffPhases[0], bluffPhases[1], bluffPhases[2], bluffPhases[3]);
+  gl.uniform4fv(uBubblePosLoc, bubbleData);
+
+  // Draw Full-screen Quad
+  gl.bindVertexArray(vao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

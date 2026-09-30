@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retro Futurism Orbital Space Illustration</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #0c1017;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  #overlay {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    width: 250px;
+    background: rgba(12, 16, 23, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(247, 243, 227, 0.2);
+    border-radius: 8px;
+    padding: 14px 16px;
+    color: #f7f3e3;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    z-index: 10;
+    user-select: none;
+  }
+  #overlay h1 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #f4b251;
+    margin-bottom: 12px;
+    line-height: 1.3;
+  }
+  .control-group {
+    margin-bottom: 10px;
+  }
+  .control-group:last-of-type {
+    margin-bottom: 4px;
+  }
+  .control-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 500;
+    color: #f7f3e3;
+    margin-bottom: 4px;
+  }
+  .control-val {
+    color: #8ecae6;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    display: block;
+    width: 100%;
+    height: 5px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(247, 243, 227, 0.18);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #e65c40;
+    border: 2px solid #f7f3e3;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #e65c40;
+    border: 2px solid #f7f3e3;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .hint {
+    font-size: 10px;
+    color: #8ecae6;
+    opacity: 0.65;
+    margin-top: 8px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="overlay">
+  <h1>Retro Futurism Orbital Space Illustration</h1>
+  <div class="control-group">
+    <div class="control-label">
+      <span>Orbital Speed</span>
+      <span id="speed-val" class="control-val">1.0</span>
+    </div>
+    <input type="range" id="speed-slider" min="0" max="3" step="0.1" value="1">
+  </div>
+  <div class="control-group">
+    <div class="control-label">
+      <span>Element Density</span>
+      <span id="density-val" class="control-val">6</span>
+    </div>
+    <input type="range" id="density-slider" min="3" max="10" step="1" value="6">
+  </div>
+  <div class="control-group">
+    <div class="control-label">
+      <span>Print Misregistration</span>
+      <span id="misreg-val" class="control-val">1.5</span>
+    </div>
+    <input type="range" id="misreg-slider" min="0" max="6" step="0.5" value="1.5">
+  </div>
+  <div class="hint">Press 'H' to hide</div>
+</div>
+
+<script>
+window.__frames = 0;
+
+// Deterministic Pseudo-Random Number Generator (Mulberry32)
+const urlParams = new URLSearchParams(window.location.search);
+let seedVal = parseInt(urlParams.get('seed') || '1', 10);
+if (isNaN(seedVal)) seedVal = 1;
+
+function createRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = createRng(seedVal);
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let width = 0, height = 0, dpr = 1;
+let paperPattern = null;
+
+// Palette definitions (from brief)
+const PALETTE = {
+  cream: '#f7f3e3',
+  vermilion: '#e65c40',
+  mustard: '#f4b251',
+  teal: '#33a19b',
+  sky: '#8ecae6',
+  dark: '#0c1017'
+};
+
+// Simulated Screen-Print Spot-Color Plate angles (in degrees)
+const PLATE_ANGLES = {
+  cream: 0,
+  vermilion: 45,
+  mustard: 165,
+  teal: 285,
+  sky: 210,
+  dark: 0
+};
+
+// Live controls
+let orbitalSpeed = 1.0;
+let elementDensity = 6;
+let currentMisreg = 1.5;
+
+function getPlateOffset(colorName) {
+  if (!PLATE_ANGLES[colorName] || currentMisreg === 0) return { x: 0, y: 0 };
+  const rad = PLATE_ANGLES[colorName] * Math.PI / 180;
+  return {
+    x: Math.cos(rad) * currentMisreg,
+    y: Math.sin(rad) * currentMisreg
+  };
+}
+
+function withPlate(colorName, fn) {
+  const off = getPlateOffset(colorName);
+  if (off.x !== 0 || off.y !== 0) {
+    ctx.save();
+    ctx.translate(off.x, off.y);
+    fn();
+    ctx.restore();
+  } else {
+    fn();
+  }
+}
+
+// Procedural textured paper grain
+function createPaperTexture() {
+  const texRng = createRng(seedVal + 777);
+  const size = 256;
+  const off = document.createElement('canvas');
+  off.width = size;
+  off.height = size;
+  const octx = off.getContext('2d');
+  
+  octx.fillStyle = '#0c1017';
+  octx.fillRect(0, 0, size, size);
+  
+  const imgData = octx.getImageData(0, 0, size, size);
+  const d = imgData.data;
+  for (let i = 0; i < size * size; i++) {
+    const noise = (texRng() - 0.5) * 16;
+    const idx = i * 4;
+    d[idx] = Math.min(255, Math.max(0, d[idx] + noise));
+    d[idx + 1] = Math.min(255, Math.max(0, d[idx + 1] + noise * 1.05));
+    d[idx + 2] = Math.min(255, Math.max(0, d[idx + 2] + noise * 1.15));
+    if (texRng() < 0.0035) {
+      const speck = 20 + texRng() * 35;
+      d[idx] += speck * 0.9;
+      d[idx + 1] += speck * 0.85;
+      d[idx + 2] += speck * 0.7;
+    }
+  }
+  octx.putImageData(imgData, 0, 0);
+  paperPattern = ctx.createPattern(off, 'repeat');
+}
+
+// Planetary and orbital layout parameters
+let px = 0, py = 0, R = 0;
+const ringAngle = -26 * Math.PI / 180;
+const ringAspect = 0.32;
+let a = 0, b = 0, e = 0, omega = -0.5585, inc = 0.733;
+
+function updateDimensions() {
+  px = width * 0.48;
+  py = height * 0.52;
+  R = Math.min(width, height) * 0.175;
+  a = R * 2.38;
+  b = R * 1.55;
+  e = Math.sqrt(Math.max(0.01, 1 - (b * b) / (a * a)));
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  updateDimensions();
+  createPaperTexture();
+}
+window.addEventListener('resize', resize);
+
+// Keplerian Orbit Solver (Newton-Raphson)
+function solveKepler(M, ecc) {
+  let E = M;
+  for (let iter = 0; iter < 5; iter++) {
+    const delta = (E - ecc * Math.sin(E) - M) / (1 - ecc * Math.cos(E));
+    E -= delta;
+    if (Math.abs(delta) < 1e-6) break;
+  }
+  return E;
+}
+
+// Starfield initialization
+let stars = [];
+function initStarfield() {
+  const sRng = createRng(seedVal + 111);
+  stars = [];
+  const starColors = ['cream', 'mustard', 'sky'];
+  for (let i = 0; i < 140; i++) {
+    stars.push({
+      xf: sRng(),
+      yf: sRng(),
+      size: 1 + sRng() * 2.2,
+      type: sRng() < 0.65 ? 0 : (sRng() < 0.85 ? 1 : 2),
+      color: starColors[Math.floor(sRng() * 3)],
+      phase: sRng() * Math.PI * 2,
+      speed: 0.5 + sRng() * 1.5
+    });
+  }
+}
+
+// Procedural Googie / Retrofuturism Elements
+let googieElements = [];
+function initGoogieElements() {
+  const gRng = createRng(seedVal + 333);
+  googieElements = [
+    { type: 'bohr', xf: 0.20, yf: 0.24, scale: 0.9, angle: -0.2, speed: 0.8 },
+    { type: 'starburst', xf: 0.82, yf: 0.22, scale: 1.1, rotSpeed: 0.04, points: 8 },
+    { type: 'boomerang', xf: 0.16, yf: 0.74, scale: 1.0, angle: 0.4 },
+    { type: 'trajectory', xf: 0.32, yf: 0.82, scale: 0.95, angle: -0.15, label: 'TRAJECTORY-A' },
+    { type: 'starburst', xf: 0.84, yf: 0.78, scale: 0.85, rotSpeed: -0.06, points: 4 },
+    { type: 'diamond_cluster', xf: 0.68, yf: 0.18, scale: 0.95 },
+    { type: 'bohr', xf: 0.52, yf: 0.14, scale: 0.75, angle: 0.5, speed: -1.1 },
+    { type: 'boomerang', xf: 0.76, yf: 0.48, scale: 0.8, angle: -0.6 },
+    { type: 'trajectory', xf: 0.72, yf: 0.86, scale: 0.85, angle: 0.2, label: 'ORBIT-B 104' },
+    { type: 'starburst', xf: 0.12, yf: 0.46, scale: 0.75, rotSpeed: 0.08, points: 8 }
+  ];
+  for (const el of googieElements) {
+    el.xf += (gRng() - 0.5) * 0.05;
+    el.yf += (gRng() - 0.5) * 0.05;
+    el.scale *= 0.85 + gRng() * 0.3;
+  }
+}
+
+// Celestial Mechanics: Rocket
+function getRocketState(t) {
+  const M = ((t * 0.35) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const E = solveKepler(M, e);
+  const xOrb = a * (Math.cos(E) - e);
+  const yOrb = b * Math.sin(E);
+  const vxOrb = -a * Math.sin(E);
+  const vyOrb = b * Math.cos(E);
+  
+  const cosW = Math.cos(omega), sinW = Math.sin(omega);
+  const cosI = Math.cos(inc), sinI = Math.sin(inc);
+  
+  const x = xOrb * cosW - yOrb * cosI * sinW;
+  const y = xOrb * sinW + yOrb * cosI * cosW;
+  const z = yOrb * sinI;
+  
+  const vx = vxOrb * cosW - vyOrb * cosI * sinW;
+  const vy = vxOrb * sinW + vyOrb * cosI * cosW;
+  const angle = Math.atan2(vy, vx);
+  
+  return {
+    x: px + x,
+    y: py + y,
+    z: z,
+    angle: angle
+  };
+}
+
+// Celestial Mechanics: Sputnik Satellite
+function getSatelliteState(t) {
+  const as = R * 1.75;
+  const bs = R * 1.25;
+  const es = 0.28;
+  const ws = 1.1;
+  const isat = 0.95;
+  const Ms = ((t * 0.65) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const Es = solveKepler(Ms, es);
+  const xOrb = as * (Math.cos(Es) - es);
+  const yOrb = bs * Math.sin(Es);
+  const vxOrb = -as * Math.sin(Es);
+  const vyOrb = bs * Math.cos(Es);
+  const cosW = Math.cos(ws), sinW = Math.sin(ws);
+  const cosI = Math.cos(isat), sinI = Math.sin(isat);
+  const x = xOrb * cosW - yOrb * cosI * sinW;
+  const y = xOrb * sinW + yOrb * cosI * cosW;
+  const z = yOrb * sinI;
+  const vx = vxOrb * cosW - vyOrb * cosI * sinW;
+  const vy = vxOrb * sinW + vyOrb * cosI * cosW;
+  return {
+    x: px + x,
+    y: py + y,
+    z: z,
+    angle: Math.atan2(vy, vx)
+  };
+}
+
+// Celestial Mechanics: Companion Moon
+function getMoonState(t) {
+  const am = R * 2.9;
+  const bm = R * 2.5;
+  const em = 0.12;
+  const wm = -0.8;
+  const im = 0.4;
+  const Mm = ((t * 0.18 + 2.0) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const Em = solveKepler(Mm, em);
+  const xOrb = am * (Math.cos(Em) - em);
+  const yOrb = bm * Math.sin(Em);
+  const cosW = Math.cos(wm), sinW = Math.sin(wm);
+  const cosI = Math.cos(im), sinI = Math.sin(im);
+  return {
+    x: px + xOrb * cosW - yOrb * cosI * sinW,
+    y: py + xOrb * sinW + yOrb * cosI * cosW,
+    z: yOrb * sinI
+  };
+}
+
+// DRAWING ROUTINES
+
+function drawStarfield(time) {
+  for (const s of stars) {
+    const sx = s.xf * width;
+    const sy = s.yf * height;
+    const twinkle = 0.65 + 0.35 * Math.sin(time * s.speed + s.phase);
+    
+    withPlate(s.color, () => {
+      ctx.globalAlpha = twinkle;
+      ctx.fillStyle = PALETTE[s.color];
+      
+      if (s.type === 0) {
+        ctx.beginPath();
+        ctx.arc(sx, sy, s.size * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (s.type === 1) {
+        const len = s.size * 2.8;
+        ctx.strokeStyle = PALETTE[s.color];
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx - len, sy);
+        ctx.lineTo(sx + len, sy);
+        ctx.moveTo(sx, sy - len);
+        ctx.lineTo(sx, sy + len);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(sx, sy, s.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const d = s.size * 1.4;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - d);
+        ctx.lineTo(sx + d, sy);
+        ctx.lineTo(sx, sy + d);
+        ctx.lineTo(sx - d, sy);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1.0;
+    });
+  }
+}
+
+function drawOrbitTrack(oa, ob, oe, ow, oi, cx, cy, isFrontPass) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  
+  withPlate('sky', () => {
+    ctx.strokeStyle = 'rgba(142, 202, 230, 0.32)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 7]);
+    ctx.beginPath();
+    
+    const steps = 90;
+    let started = false;
+    for (let j = 0; j <= steps; j++) {
+      const E = (j / steps) * Math.PI * 2;
+      const xOrb = oa * (Math.cos(E) - oe);
+      const yOrb = ob * Math.sin(E);
+      const z = yOrb * Math.sin(oi);
+      
+      if ((isFrontPass && z >= 0) || (!isFrontPass && z < 0)) {
+        const cosW = Math.cos(ow), sinW = Math.sin(ow);
+        const cosI = Math.cos(oi);
+        const sx = xOrb * cosW - yOrb * cosI * sinW;
+        const sy = xOrb * sinW + yOrb * cosI * cosW;
+        if (!started) {
+          ctx.moveTo(sx, sy);
+          started = true;
+        } else {
+          ctx.lineTo(sx, sy);
+        }
+      } else {
+        started = false;
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+  
+  ctx.restore();
+}
+
+function renderRings() {
+  // Broad outer ring (A-Ring)
+  withPlate('sky', () => {
+    ctx.fillStyle = 'rgba(142, 202, 230, 0.75)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * 2.45, R * 2.45 * ringAspect, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, R * 1.95, R * 1.95 * ringAspect, 0, Math.PI * 2, 0, true);
+    ctx.fill();
+  });
+  
+  withPlate('cream', () => {
+    ctx.strokeStyle = 'rgba(247, 243, 227, 0.45)';
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * 2.32, R * 2.32 * ringAspect, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  
+  // Dense middle ring (B-Ring)
+  withPlate('mustard', () => {
+    ctx.fillStyle = 'rgba(244, 178, 81, 0.85)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * 1.85, R * 1.85 * ringAspect, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, R * 1.45, R * 1.45 * ringAspect, 0, Math.PI * 2, 0, true);
+    ctx.fill();
+  });
+  
+  withPlate('cream', () => {
+    ctx.fillStyle = 'rgba(247, 243, 227, 0.65)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * 1.72, R * 1.72 * ringAspect, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, R * 1.58, R * 1.58 * ringAspect, 0, Math.PI * 2, 0, true);
+    ctx.fill();
+  });
+  
+  // Inner faint ring (C-Ring / Crepe Ring)
+  withPlate('teal', () => {
+    ctx.fillStyle = 'rgba(51, 161, 155, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * 1.45, R * 1.45 * ringAspect, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, R * 1.30, R * 1.30 * ringAspect, 0, Math.PI * 2, 0, true);
+    ctx.fill();
+  });
+}
+
+function drawFarRings() {
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(ringAngle);
+  
+  ctx.beginPath();
+  ctx.rect(-R * 3, -R * 3, R * 6, R * 3);
+  ctx.clip();
+  
+  renderRings();
+  
+  // Planet shadow cast onto rings
+  ctx.fillStyle = 'rgba(10, 14, 22, 0.92)';
+  ctx.beginPath();
+  ctx.ellipse(R * 0.65, -R * 0.15, R * 0.85, R * 1.1 * ringAspect, 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+function drawNearRings() {
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(ringAngle);
+  
+  ctx.beginPath();
+  ctx.rect(-R * 3, 0, R * 6, R * 3);
+  ctx.clip();
+  
+  renderRings();
+  
+  ctx.restore();
+}
+
+function drawPlanetDisc() {
+  ctx.save();
+  
+  ctx.beginPath();
+  ctx.arc(px, py, R, 0, Math.PI * 2);
+  ctx.clip();
+  
+  ctx.fillStyle = '#141d2b';
+  ctx.fillRect(px - R, py - R, R * 2, R * 2);
+  
+  // Atmospheric Bands
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(ringAngle);
+  
+  const bands = [
+    { y0: -1.00, y1: -0.72, col: 'teal' },
+    { y0: -0.72, y1: -0.48, col: 'sky' },
+    { y0: -0.48, y1: -0.22, col: 'cream' },
+    { y0: -0.22, y1: -0.06, col: 'vermilion' },
+    { y0: -0.06, y1:  0.14, col: 'mustard' },
+    { y0:  0.14, y1:  0.34, col: 'cream' },
+    { y0:  0.34, y1:  0.58, col: 'teal' },
+    { y0:  0.58, y1:  0.80, col: 'vermilion' },
+    { y0:  0.80, y1:  1.00, col: 'sky' }
+  ];
+  
+  for (const b of bands) {
+    withPlate(b.col, () => {
+      ctx.fillStyle = PALETTE[b.col];
+      ctx.beginPath();
+      const topY = b.y0 * R;
+      const botY = b.y1 * R;
+      ctx.rect(-R * 1.25, topY, R * 2.5, botY - topY);
+      ctx.fill();
+    });
+  }
+  
+  // Rings shadow across planet
+  ctx.fillStyle = 'rgba(10, 14, 22, 0.75)';
+  ctx.fillRect(-R * 1.25, -R * 0.08, R * 2.5, R * 0.16);
+  
+  ctx.restore();
+  
+  // Planet Terminator Night Shadow
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(-40 * Math.PI / 180);
+  
+  ctx.fillStyle = 'rgba(10, 14, 22, 0.88)';
+  ctx.beginPath();
+  ctx.arc(0, 0, R + 2, -Math.PI / 2, Math.PI / 2, false);
+  ctx.ellipse(0, 0, R * 0.42, R + 2, 0, Math.PI / 2, -Math.PI / 2, true);
+  ctx.closePath();
+  ctx.fill();
+  
+  ctx.restore();
+  
+  // Clean outline ring around planet disc
+  withPlate('cream', () => {
+    ctx.strokeStyle = 'rgba(247, 243, 227, 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(px, py, R, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  
+  ctx.restore();
+}
+
+function drawRocket(rState, time) {
+  const { x, y, angle } = rState;
+  const L = Math.max(34, Math.min(width, height) * 0.052);
+  const W = L * 0.28;
+  
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  
+  // 1. Exhaust Flame
+  const flameOsc = Math.sin(time * 24);
+  const flameLen = L * (0.65 + 0.15 * flameOsc);
+  
+  withPlate('vermilion', () => {
+    ctx.fillStyle = PALETTE.vermilion;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.48, -W * 0.5);
+    ctx.lineTo(-L * 0.48 - flameLen, 0);
+    ctx.lineTo(-L * 0.48, W * 0.5);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  withPlate('mustard', () => {
+    ctx.fillStyle = PALETTE.mustard;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.48, -W * 0.35);
+    ctx.lineTo(-L * 0.48 - flameLen * 0.7, 0);
+    ctx.lineTo(-L * 0.48, W * 0.35);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  withPlate('cream', () => {
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.48, -W * 0.2);
+    ctx.lineTo(-L * 0.48 - flameLen * 0.35, 0);
+    ctx.lineTo(-L * 0.48, W * 0.2);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // 2. Wings / Fins
+  withPlate('vermilion', () => {
+    ctx.fillStyle = PALETTE.vermilion;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.1, -W * 0.7);
+    ctx.quadraticCurveTo(-L * 0.3, -W * 2.2, -L * 0.45, -W * 2.1);
+    ctx.lineTo(-L * 0.48, -W * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.1, W * 0.7);
+    ctx.quadraticCurveTo(-L * 0.3, W * 2.2, -L * 0.45, W * 2.1);
+    ctx.lineTo(-L * 0.48, W * 0.7);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  withPlate('cream', () => {
+    ctx.strokeStyle = PALETTE.cream;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.1, -W * 0.7);
+    ctx.quadraticCurveTo(-L * 0.3, -W * 2.2, -L * 0.45, -W * 2.1);
+    ctx.moveTo(-L * 0.1, W * 0.7);
+    ctx.quadraticCurveTo(-L * 0.3, W * 2.2, -L * 0.45, W * 2.1);
+    ctx.stroke();
+  });
+  
+  // 3. Engine Nozzle
+  withPlate('dark', () => {
+    ctx.fillStyle = '#0c1017';
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.42, -W * 0.4);
+    ctx.lineTo(-L * 0.52, -W * 0.55);
+    ctx.lineTo(-L * 0.52, W * 0.55);
+    ctx.lineTo(-L * 0.42, W * 0.4);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // 4. Fuselage
+  withPlate('cream', () => {
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.65, 0);
+    ctx.quadraticCurveTo(L * 0.2, -W * 1.05, -L * 0.45, -W * 0.85);
+    ctx.lineTo(-L * 0.45, W * 0.85);
+    ctx.quadraticCurveTo(L * 0.2, W * 1.05, L * 0.65, 0);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // Longitudinal Accent Stripe
+  withPlate('teal', () => {
+    ctx.fillStyle = PALETTE.teal;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.3, -W * 0.3);
+    ctx.lineTo(-L * 0.45, -W * 0.3);
+    ctx.lineTo(-L * 0.45, W * 0.3);
+    ctx.lineTo(L * 0.3, W * 0.3);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // Nose cone tip
+  withPlate('vermilion', () => {
+    ctx.fillStyle = PALETTE.vermilion;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.65, 0);
+    ctx.quadraticCurveTo(L * 0.5, -W * 0.5, L * 0.35, -W * 0.65);
+    ctx.lineTo(L * 0.35, W * 0.65);
+    ctx.quadraticCurveTo(L * 0.5, W * 0.5, L * 0.65, 0);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // Needle Antenna on nose
+  withPlate('cream', () => {
+    ctx.strokeStyle = PALETTE.cream;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.65, 0);
+    ctx.lineTo(L * 0.88, 0);
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.mustard;
+    ctx.beginPath();
+    ctx.arc(L * 0.88, 0, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  // Portholes
+  const portholes = [L * 0.12, -L * 0.08, -L * 0.28];
+  for (const pxh of portholes) {
+    withPlate('dark', () => {
+      ctx.fillStyle = '#0c1017';
+      ctx.beginPath();
+      ctx.arc(pxh, 0, W * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    withPlate('sky', () => {
+      ctx.fillStyle = PALETTE.sky;
+      ctx.beginPath();
+      ctx.arc(pxh, 0, W * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    withPlate('cream', () => {
+      ctx.fillStyle = PALETTE.cream;
+      ctx.beginPath();
+      ctx.arc(pxh - W * 0.08, -W * 0.08, W * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  
+  ctx.restore();
+}
+
+function drawExhaustWake(t, isFrontPass) {
+  const steps = 14;
+  for (let k = 1; k <= steps; k++) {
+    const pastT = t - k * 0.04;
+    const st = getRocketState(pastT);
+    if ((isFrontPass && st.z >= 0) || (!isFrontPass && st.z < 0)) {
+      const alpha = (1 - k / (steps + 1)) * 0.85;
+      const r = (1 - k / (steps + 1)) * 4.5 + 1;
+      const col = k < 4 ? 'mustard' : (k < 9 ? 'vermilion' : 'sky');
+      
+      withPlate(col, () => {
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = PALETTE[col];
+        ctx.beginPath();
+        ctx.arc(st.x, st.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      });
+    }
+  }
+}
+
+function drawSatellite(st, time) {
+  ctx.save();
+  ctx.translate(st.x, st.y);
+  ctx.rotate(st.angle);
+  
+  const antAngles = [-0.35, -0.15, 0.15, 0.35];
+  withPlate('sky', () => {
+    ctx.strokeStyle = PALETTE.sky;
+    ctx.lineWidth = 1.2;
+    for (const an of antAngles) {
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-28 * Math.cos(an), -28 * Math.sin(an));
+      ctx.stroke();
+    }
+  });
+  
+  withPlate('cream', () => {
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  withPlate('teal', () => {
+    ctx.fillStyle = PALETTE.teal;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, Math.PI * 0.5, Math.PI * 1.5);
+    ctx.fill();
+  });
+  
+  const waveCycle = (time * 1.8) % 1.0;
+  for (let w = 0; w < 2; w++) {
+    const wProgress = (waveCycle + w * 0.5) % 1.0;
+    const wr = 8 + wProgress * 22;
+    const wAlpha = (1 - wProgress) * 0.7;
+    withPlate('sky', () => {
+      ctx.globalAlpha = wAlpha;
+      ctx.strokeStyle = PALETTE.sky;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, wr, -Math.PI * 0.6, Math.PI * 0.6);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    });
+  }
+  
+  ctx.restore();
+}
+
+function drawMoon(st) {
+  const rm = R * 0.22;
+  ctx.save();
+  ctx.translate(st.x, st.y);
+  
+  withPlate('cream', () => {
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.arc(0, 0, rm, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  const craters = [
+    { x: -rm * 0.25, y: -rm * 0.2, r: rm * 0.25, col: 'teal' },
+    { x: rm * 0.35, y: rm * 0.1, r: rm * 0.18, col: 'mustard' },
+    { x: -rm * 0.1, y: rm * 0.4, r: rm * 0.14, col: 'vermilion' }
+  ];
+  for (const c of craters) {
+    withPlate(c.col, () => {
+      ctx.strokeStyle = PALETTE[c.col];
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = PALETTE[c.col];
+      ctx.beginPath();
+      ctx.arc(c.x + c.r * 0.3, c.y + c.r * 0.3, c.r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  
+  withPlate('dark', () => {
+    ctx.fillStyle = 'rgba(12, 16, 23, 0.75)';
+    ctx.beginPath();
+    ctx.arc(0, 0, rm, -Math.PI * 0.2, Math.PI * 0.8);
+    ctx.ellipse(0, 0, rm * 0.4, rm, 0, Math.PI * 0.8, -Math.PI * 0.2, true);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  ctx.restore();
+}
+
+function drawBohrAtom(x, y, scale, angle, time) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(scale, scale);
+  
+  withPlate('vermilion', () => {
+    ctx.fillStyle = PALETTE.vermilion;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  withPlate('cream', () => {
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.arc(-1.5, -1.5, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  const orbitAngles = [0, Math.PI / 3, 2 * Math.PI / 3];
+  const colors = ['mustard', 'teal', 'sky'];
+  for (let i = 0; i < 3; i++) {
+    const oAngle = orbitAngles[i];
+    const col = colors[i];
+    ctx.save();
+    ctx.rotate(oAngle);
+    
+    withPlate(col, () => {
+      ctx.strokeStyle = PALETTE[col];
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 36, 12, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    
+    const eAngle = time * 2.2 + i * (Math.PI * 2 / 3);
+    const ex = 36 * Math.cos(eAngle);
+    const ey = 12 * Math.sin(eAngle);
+    withPlate('cream', () => {
+      ctx.fillStyle = PALETTE.cream;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    
+    ctx.restore();
+  }
+  
+  ctx.restore();
+}
+
+function drawStarburst(x, y, scale, rotSpeed, time, points = 8) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(time * rotSpeed);
+  ctx.scale(scale, scale);
+  
+  withPlate('vermilion', () => {
+    ctx.fillStyle = PALETTE.vermilion;
+    for (let i = 0; i < 4; i++) {
+      ctx.save();
+      ctx.rotate(i * Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-3, 14);
+      ctx.lineTo(0, 42);
+      ctx.lineTo(3, 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+  
+  if (points > 4) {
+    withPlate('mustard', () => {
+      ctx.fillStyle = PALETTE.mustard;
+      for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.rotate(i * Math.PI / 2 + Math.PI / 4);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-2.2, 8);
+        ctx.lineTo(0, 24);
+        ctx.lineTo(2.2, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 27, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+  }
+  
+  withPlate('cream', () => {
+    ctx.fillStyle = PALETTE.cream;
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.dark;
+    ctx.beginPath();
+    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  ctx.restore();
+}
+
+function drawBoomerang(x, y, scale, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(scale, scale);
+  
+  function boomerangPath() {
+    ctx.beginPath();
+    ctx.moveTo(-40, 20);
+    ctx.quadraticCurveTo(0, -10, 45, -35);
+    ctx.quadraticCurveTo(30, 0, 15, 30);
+    ctx.quadraticCurveTo(0, 12, -40, 20);
+    ctx.closePath();
+  }
+  
+  withPlate('teal', () => {
+    ctx.fillStyle = 'rgba(51, 161, 155, 0.75)';
+    boomerangPath();
+    ctx.fill();
+  });
+  
+  withPlate('mustard', () => {
+    ctx.strokeStyle = PALETTE.mustard;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-28, 16);
+    ctx.quadraticCurveTo(5, -6, 38, -28);
+    ctx.stroke();
+  });
+  
+  withPlate('cream', () => {
+    ctx.strokeStyle = PALETTE.cream;
+    ctx.lineWidth = 1.5;
+    boomerangPath();
+    ctx.stroke();
+  });
+  
+  ctx.restore();
+}
+
+function drawTrajectoryArc(x, y, scale, angle, label) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.scale(scale, scale);
+  
+  withPlate('sky', () => {
+    ctx.strokeStyle = 'rgba(142, 202, 230, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(-100, 40);
+    ctx.quadraticCurveTo(0, -50, 120, 20);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    ctx.fillStyle = PALETTE.sky;
+    ctx.beginPath();
+    ctx.moveTo(120, 20);
+    ctx.lineTo(108, 14);
+    ctx.lineTo(112, 24);
+    ctx.closePath();
+    ctx.fill();
+    
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.arc(i * 50, -10 + i * i * 15, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  
+  withPlate('cream', () => {
+    ctx.font = '700 9px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(247, 243, 227, 0.65)';
+    ctx.letterSpacing = '0.15em';
+    ctx.fillText(label, -20, -32);
+  });
+  
+  ctx.restore();
+}
+
+function drawDiamondCluster(x, y, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  
+  const coords = [
+    { dx: 0, dy: 0, s: 1.2, col: 'mustard' },
+    { dx: -22, dy: 16, s: 0.7, col: 'sky' },
+    { dx: 26, dy: -12, s: 0.8, col: 'vermilion' }
+  ];
+  
+  withPlate('sky', () => {
+    ctx.strokeStyle = 'rgba(142, 202, 230, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-22, 16);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(26, -12);
+    ctx.stroke();
+  });
+  
+  for (const pt of coords) {
+    withPlate(pt.col, () => {
+      ctx.save();
+      ctx.translate(pt.dx, pt.dy);
+      ctx.scale(pt.s, pt.s);
+      ctx.fillStyle = PALETTE[pt.col];
+      ctx.beginPath();
+      ctx.moveTo(0, -14);
+      ctx.lineTo(5, 0);
+      ctx.lineTo(0, 14);
+      ctx.lineTo(-5, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = PALETTE.cream;
+      ctx.beginPath();
+      ctx.arc(0, 0, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+  
+  ctx.restore();
+}
+
+function drawPosterFrame() {
+  const pad = 24;
+  withPlate('cream', () => {
+    ctx.strokeStyle = 'rgba(247, 243, 227, 0.22)';
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(pad, pad, width - pad * 2, height - pad * 2);
+    ctx.strokeStyle = 'rgba(247, 243, 227, 0.1)';
+    ctx.strokeRect(pad + 4, pad + 4, width - pad * 2 - 8, height - pad * 2 - 8);
+    
+    const corners = [
+      [pad, pad],
+      [width - pad, pad],
+      [pad, height - pad],
+      [width - pad, height - pad]
+    ];
+    for (const [cx, cy] of corners) {
+      ctx.fillStyle = PALETTE.mustard;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  
+  withPlate('sky', () => {
+    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(142, 202, 230, 0.5)';
+    ctx.letterSpacing = '0.12em';
+    const stampText = `DEEP SPACE EXPLORATION DIVISION • MISSION ORBITAL-VI • SEED ${seedVal}`;
+    ctx.fillText(stampText, pad + 14, height - pad - 12);
+  });
+}
+
+// Master Render Function
+function render(time) {
+  ctx.clearRect(0, 0, width, height);
+  
+  // 1. Paper Texture Background
+  if (paperPattern) {
+    ctx.fillStyle = paperPattern;
+    ctx.fillRect(0, 0, width, height);
+  } else {
+    ctx.fillStyle = '#0c1017';
+    ctx.fillRect(0, 0, width, height);
+  }
+  
+  // 2. Starfield
+  drawStarfield(time);
+  
+  // 3. Googie Background Elements (scaled by Element Density)
+  for (let idx = 0; idx < Math.min(elementDensity, googieElements.length); idx++) {
+    const el = googieElements[idx];
+    const ex = el.xf * width;
+    const ey = el.yf * height;
+    if (el.type === 'bohr') {
+      drawBohrAtom(ex, ey, el.scale, el.angle, time * el.speed);
+    } else if (el.type === 'starburst') {
+      drawStarburst(ex, ey, el.scale, el.rotSpeed, time, el.points);
+    } else if (el.type === 'boomerang') {
+      drawBoomerang(ex, ey, el.scale, el.angle);
+    } else if (el.type === 'trajectory') {
+      drawTrajectoryArc(ex, ey, el.scale, el.angle, el.label);
+    } else if (el.type === 'diamond_cluster') {
+      drawDiamondCluster(ex, ey, el.scale);
+    }
+  }
+  
+  // 4. Back Pass of Orbit Tracks
+  drawOrbitTrack(a, b, e, omega, inc, px, py, false);
+  drawOrbitTrack(R * 1.75, R * 1.25, 0.28, 1.1, 0.95, px, py, false);
+  
+  // 5. Back Pass of Celestial Bodies (Z < 0)
+  const rState = getRocketState(time);
+  const sState = getSatelliteState(time);
+  const mState = getMoonState(time);
+  
+  drawExhaustWake(time, false);
+  
+  if (mState.z < 0) drawMoon(mState);
+  if (sState.z < 0) drawSatellite(sState, time);
+  if (rState.z < 0) drawRocket(rState, time);
+  
+  // 6. FAR Side of Rings
+  drawFarRings();
+  
+  // 7. Planet Disc with Atmospheric Stripes & Shadow
+  drawPlanetDisc();
+  
+  // 8. NEAR Side of Rings
+  drawNearRings();
+  
+  // 9. Front Pass of Celestial Bodies (Z >= 0)
+  drawExhaustWake(time, true);
+  
+  if (rState.z >= 0) drawRocket(rState, time);
+  if (sState.z >= 0) drawSatellite(sState, time);
+  if (mState.z >= 0) drawMoon(mState);
+  
+  // 10. Front Pass of Orbit Tracks
+  drawOrbitTrack(a, b, e, omega, inc, px, py, true);
+  drawOrbitTrack(R * 1.75, R * 1.25, 0.28, 1.1, 0.95, px, py, true);
+  
+  // 11. Poster Framing & Technical Typography
+  drawPosterFrame();
+}
+
+// Main Animation Loop
+let lastTime = performance.now();
+let simTime = 0;
+
+function animate(now) {
+  window.__frames++;
+  requestAnimationFrame(animate);
+  
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  
+  simTime += dt * orbitalSpeed;
+  render(simTime);
+}
+
+// Setup Event Listeners
+const speedSlider = document.getElementById('speed-slider');
+const densitySlider = document.getElementById('density-slider');
+const misregSlider = document.getElementById('misreg-slider');
+
+const speedVal = document.getElementById('speed-val');
+const densityVal = document.getElementById('density-val');
+const misregVal = document.getElementById('misreg-val');
+
+speedSlider.addEventListener('input', (e) => {
+  orbitalSpeed = parseFloat(e.target.value);
+  speedVal.textContent = orbitalSpeed.toFixed(1);
+});
+
+densitySlider.addEventListener('input', (e) => {
+  elementDensity = parseInt(e.target.value, 10);
+  densityVal.textContent = elementDensity.toString();
+});
+
+misregSlider.addEventListener('input', (e) => {
+  currentMisreg = parseFloat(e.target.value);
+  misregVal.textContent = currentMisreg.toFixed(1);
+});
+
+// 'h' key hides/reveals overlay
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    const overlay = document.getElementById('overlay');
+    if (overlay) {
+      overlay.style.display = (overlay.style.display === 'none') ? 'block' : 'none';
+    }
+  }
+});
+
+// Initialize scene and start
+resize();
+initStarfield();
+initGoogieElements();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

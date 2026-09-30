@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "name": "Magnetic Reverie",
+  "nodes": [
+    {
+      "id": "silk",
+      "type": "silk",
+      "position": {
+        "x": 0,
+        "y": 80
+      },
+      "params": {
+        "fold": 0.65,
+        "density": 26,
+        "palette": 7,
+        "layers": 3,
+        "offset": 0.35,
+        "ratio": 1.7083333333333333,
+        "strength": 0.32,
+        "mode": 2,
+        "ax": 0.28,
+        "ay": 0.4,
+        "bx": 0.72,
+        "by": 0.6,
+        "crossing": 2,
+        "angle": 2.007128639793479,
+        "mixAmount": 1
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "position": {
+        "x": 960,
+        "y": 80
+      },
+      "params": {}
+    },
+    {
+      "id": "smear",
+      "type": "fx.reverb",
+      "position": {
+        "x": 240,
+        "y": 80
+      },
+      "params": {
+        "amount": 1
+      }
+    },
+    {
+      "id": "crush",
+      "type": "fx.crush",
+      "position": {
+        "x": 480,
+        "y": 80
+      },
+      "params": {
+        "amount": 0.65
+      }
+    },
+    {
+      "id": "stagger",
+      "type": "fx.reverb",
+      "position": {
+        "x": 720,
+        "y": 80
+      },
+      "params": {
+        "amount": 1
+      }
+    },
+    {
+      "id": "magnetic-lfo",
+      "type": "lfo",
+      "position": {
+        "x": 70,
+        "y": 390
+      },
+      "params": {
+        "shape": 0,
+        "rate": 0.25,
+        "sync": 1,
+        "beats": 24,
+        "phase": 0
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "frame-0",
+      "from": {
+        "node": "silk",
+        "port": "frame"
+      },
+      "to": {
+        "node": "smear",
+        "port": "in"
+      }
+    },
+    {
+      "id": "frame-1",
+      "from": {
+        "node": "smear",
+        "port": "frame"
+      },
+      "to": {
+        "node": "crush",
+        "port": "in"
+      }
+    },
+    {
+      "id": "frame-2",
+      "from": {
+        "node": "crush",
+        "port": "frame"
+      },
+      "to": {
+        "node": "stagger",
+        "port": "in"
+      }
+    },
+    {
+      "id": "frame-3",
+      "from": {
+        "node": "stagger",
+        "port": "frame"
+      },
+      "to": {
+        "node": "output",
+        "port": "in"
+      }
+    },
+    {
+      "id": "magnetic-breath",
+      "from": {
+        "node": "magnetic-lfo",
+        "port": "value"
+      },
+      "to": {
+        "node": "silk",
+        "port": "param:strength"
+      },
+      "depth": 0.2
+    }
+  ],
+  "transport": {
+    "bpm": 120,
+    "loopSeconds": 12
+  },
+  "events": []
+}

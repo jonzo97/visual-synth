@@ -1,0 +1,20 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Clips and renders exported from the Visual Synth (the FFmpeg fallback writes under artifacts/)
+artifacts/
+*.mp4
+*.webm
+
+# Local environment, editor and OS files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

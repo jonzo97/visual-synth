@@ -1,0 +1,15 @@
+{
+ "title": "Breathing Bulb",
+ "blurb": "A sphere-traced Mandelbulb whose power breathes while the camera circles it once per loop.",
+ "chain": "Breathing Julia (Mandelbulb)",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "fractal"
+ ],
+ "controls": "Knobs: Bulb power, Breathing, Colour spread, Morph · Drag: colour and camera tilt · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#breathing-bulb"
+}

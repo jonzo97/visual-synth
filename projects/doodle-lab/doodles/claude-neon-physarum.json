@@ -1,0 +1,9 @@
+{
+ "title": "Neon Slime Mold Wars",
+ "blurb": "Up to a million GPU slime-mold agents in three rival species: each follows its own trail, flees the others, and weaves a glowing transport network.",
+ "tags": ["simulation", "agents", "shader"],
+ "controls": "Drag to lay food, Shift- or right-drag for poison; presets, rivalry and sensor sliders; Reseed; H hides UI, R records",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (lab lead)",
+ "tech": "WebGL2 float textures, point-sprite deposit"
+}

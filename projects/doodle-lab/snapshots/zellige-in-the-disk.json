@@ -1,0 +1,14 @@
+{
+ "title": "Zellige in the Disk",
+ "blurb": "Hyperbolic Map folds a panning zellige into an {8,3} Poincaré disk: two pantry ingredients composed. Phason flips stay off here: magnified, one discrete flip repaints the whole disk.",
+ "chain": "Multigrid Zellige → Hyperbolic Map → Glow",
+ "tags": [
+  "synth snapshot",
+  "multigrid"
+ ],
+ "controls": "Knobs: Möbius drift, Input area per tile, Tile size, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#zellige-in-the-disk"
+}

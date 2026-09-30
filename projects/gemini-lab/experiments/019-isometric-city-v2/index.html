@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generative Isometric Dusk City v2</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #060814;
+      user-select: none;
+    }
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: rgba(12, 16, 32, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 240, 255, 0.22);
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #e2e8f0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 12px;
+      z-index: 100;
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.7), 0 0 15px rgba(0, 240, 255, 0.12);
+      min-width: 230px;
+      pointer-events: auto;
+    }
+    #ui h1 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin: 0 0 12px 0;
+      color: #00f0ff;
+      text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    }
+    .control-row {
+      margin-bottom: 10px;
+    }
+    .control-row:last-child {
+      margin-bottom: 0;
+    }
+    .control-row label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .control-row label span {
+      color: #ff9e00;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .control-row input[type="range"] {
+      width: 100%;
+      margin: 0;
+      cursor: pointer;
+      accent-color: #00f0ff;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      outline: none;
+    }
+    .hint {
+      margin-top: 9px;
+      font-size: 10px;
+      color: #64748b;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h1>Generative Isometric Dusk City v2</h1>
+    <div class="control-row">
+      <label for="speedSlider">Transit Flow: <span id="val-speed">1.2x</span></label>
+      <input type="range" id="speedSlider" min="0.5" max="3.0" step="0.1" value="1.2">
+    </div>
+    <div class="control-row">
+      <label for="heightSlider">Tower Scale: <span id="val-height">26</span></label>
+      <input type="range" id="heightSlider" min="10" max="45" step="1" value="26">
+    </div>
+    <div class="control-row">
+      <label for="glowSlider">Holo &amp; Neon Glow: <span id="val-glow">0.85</span></label>
+      <input type="range" id="glowSlider" min="0.2" max="1.5" step="0.05" value="0.85">
+    </div>
+    <div class="hint">Press 'H' to toggle overlay</div>
+  </div>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    window.__frames = 0;
+
+    // --- Deterministic Seeded PRNG ---
+    const urlParams = new URLSearchParams(window.location.search);
+    let seedVal = parseInt(urlParams.get('seed'), 10);
+    if (isNaN(seedVal)) seedVal = 1;
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rng = mulberry32(seedVal);
+
+    // --- 2D Simplex/Perlin-Style Gradient Noise ---
+    function createNoise2D(randFn) {
+      const perm = new Uint8Array(512);
+      const p = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p[i] = i;
+      for (let i = 255; i > 0; i--) {
+        const j = Math.floor(randFn() * (i + 1));
+        const temp = p[i]; p[i] = p[j]; p[j] = temp;
+      }
+      for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+      function grad(hash, x, y) {
+        const h = hash & 7;
+        const u = h < 4 ? x : y;
+        const v = h < 4 ? y : x;
+        return ((h & 1) ? -u : u) + ((h & 2) ? -2.0 * v : 2.0 * v);
+      }
+
+      return function(x, y) {
+        const X = Math.floor(x) & 255;
+        const Y = Math.floor(y) & 255;
+        const xf = x - Math.floor(x);
+        const yf = y - Math.floor(y);
+        const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10);
+        const v = yf * yf * yf * (yf * (yf * 6 - 15) + 10);
+        const a = perm[X] + Y;
+        const b = perm[X + 1] + Y;
+        const g00 = grad(perm[a], xf, yf);
+        const g10 = grad(perm[b], xf - 1, yf);
+        const g01 = grad(perm[a + 1], xf, yf - 1);
+        const g11 = grad(perm[b + 1], xf - 1, yf - 1);
+        const x1 = g00 + u * (g10 - g00);
+        const x2 = g01 + u * (g11 - g01);
+        return (x1 + v * (x2 - x1)) * 0.5 + 0.5;
+      };
+    }
+    const noise = createNoise2D(rng);
+
+    function fbm(x, y) {
+      let val = 0, amp = 0.58, freq = 0.24;
+      for (let o = 0; o < 3; o++) {
+        val += amp * noise(x * freq, y * freq);
+        freq *= 2.0;
+        amp *= 0.5;
+      }
+      return val;
+    }
+
+    // --- City Constants & Grid Setup ---
+    const GRID_SIZE = 18;
+    const ROAD_COORDS = [3, 7, 11, 15];
+    const ROAD_SET = new Set(ROAD_COORDS);
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let screenW = 0, screenH = 0;
+    let tileW = 28, tileH = 14;
+    let originX = 0, originY = 0;
+
+    // Overlay controls
+    let speedSliderVal = 1.2;
+    let heightSliderVal = 26;
+    let glowSliderVal = 0.85;
+
+    const speedSlider = document.getElementById('speedSlider');
+    const heightSlider = document.getElementById('heightSlider');
+    const glowSlider = document.getElementById('glowSlider');
+    const valSpeed = document.getElementById('val-speed');
+    const valHeight = document.getElementById('val-height');
+    const valGlow = document.getElementById('val-glow');
+
+    speedSlider.addEventListener('input', (e) => {
+      speedSliderVal = parseFloat(e.target.value);
+      valSpeed.textContent = speedSliderVal.toFixed(1) + 'x';
+    });
+    heightSlider.addEventListener('input', (e) => {
+      heightSliderVal = parseFloat(e.target.value);
+      valHeight.textContent = heightSliderVal;
+    });
+    glowSlider.addEventListener('input', (e) => {
+      glowSliderVal = parseFloat(e.target.value);
+      valGlow.textContent = glowSliderVal.toFixed(2);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        const ui = document.getElementById('ui');
+        ui.style.display = ui.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      screenW = window.innerWidth;
+      screenH = window.innerHeight;
+      canvas.width = Math.floor(screenW * dpr);
+      canvas.height = Math.floor(screenH * dpr);
+      canvas.style.width = screenW + 'px';
+      canvas.style.height = screenH + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const targetW = screenW * 0.94;
+      tileW = Math.max(18, Math.min(32, Math.floor(targetW / (GRID_SIZE * 2))));
+      tileH = Math.round(tileW * 0.5);
+
+      originX = screenW * 0.5;
+      originY = screenH * 0.38;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function toScreen(gx, gy, gz = 0) {
+      return {
+        x: originX + (gx - gy) * tileW,
+        y: originY + (gx + gy) * tileH - gz
+      };
+    }
+
+    // --- Distant Skyline Silhouettes & Atmosphere ---
+    const distantTowers = [];
+    for (let i = 0; i < 28; i++) {
+      distantTowers.push({
+        xRel: (i / 27) * 1.2 - 0.1,
+        w: 18 + rng() * 32,
+        h: 90 + rng() * 190,
+        hasSpire: rng() < 0.45,
+        beaconPhase: rng() * Math.PI * 2,
+        winRows: Math.floor(5 + rng() * 12),
+        winCols: Math.floor(2 + rng() * 4),
+        litMap: Array.from({ length: 48 }, () => rng() < 0.35)
+      });
+    }
+
+    // Sky Searchlights
+    const skySearchlights = [
+      { baseRelX: 0.22, baseRelY: 0.65, angle: 0.4, speed: 0.18, color: 'rgba(0, 240, 255, 0.08)' },
+      { baseRelX: 0.78, baseRelY: 0.68, angle: -0.5, speed: -0.22, color: 'rgba(255, 160, 40, 0.07)' }
+    ];
+
+    // --- City Parcels & Architectural Typologies ---
+    // Typologies:
+    // 0: Spire Monolith (Cyber Needle)
+    // 1: Cylindrical / Curved Tower with Balconies
+    // 2: Brutalist Server Datacenter with Louvers & Fans
+    // 3: Canted Glass Atrium Skyscraper
+    // 4: Stepped Art-Deco Ziggurat
+    // 5: Skybridge Twin Anchor Tower
+    // 6: Central Transit Terminal with Arched Rail Portal
+
+    const cells = [];
+    const skybridges = [];
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      cells[x] = [];
+      for (let y = 0; y < GRID_SIZE; y++) {
+        const isWater = (x >= 16);
+        const isRoadX = ROAD_SET.has(y);
+        const isRoadY = ROAD_SET.has(x);
+        const isRoad = !isWater && (isRoadX || isRoadY);
+        const isIntersection = isRoad && isRoadX && isRoadY;
+        const isBridge = isWater && isRoadX;
+
+        const cell = {
+          x, y,
+          isWater,
+          isBridge,
+          isRoad,
+          isIntersection,
+          building: null,
+          isPlaza: false,
+          pylon: null
+        };
+
+        if (!isWater && !isRoad) {
+          const dx = (x - 8.5) / 8.5;
+          const dy = (y - 8.5) / 8.5;
+          const distCenter = Math.sqrt(dx * dx + dy * dy);
+          const centerBoost = Math.max(0, 1.0 - distCenter * 0.7);
+          const nVal = fbm(x, y);
+          let baseFactor = Math.pow(nVal * 0.6 + centerBoost * 0.65, 1.4);
+
+          // Dedicated signature landmarks
+          let type = 4; // default stepped
+          if (x === 5 && y === 5) {
+            type = 0; // Apex Spire
+            baseFactor = Math.max(baseFactor, 0.88);
+          } else if ((x === 12 && y === 5) || (x === 13 && y === 5)) {
+            type = 5; // Twin Skybridge Tower
+            baseFactor = Math.max(baseFactor, 0.78);
+          } else if (x === 5 && y === 12) {
+            type = 1; // Cylindrical Luxury Tower
+            baseFactor = Math.max(baseFactor, 0.72);
+          } else if (x === 9 && y === 8) {
+            type = 6; // Transit Terminal
+            baseFactor = 0.55;
+          } else if (rng() < 0.12 && distCenter > 0.35) {
+            cell.isPlaza = true;
+          } else {
+            const roll = rng();
+            if (roll < 0.2) type = 1;
+            else if (roll < 0.42) type = 2;
+            else if (roll < 0.62) type = 3;
+            else if (roll < 0.82) type = 4;
+            else type = 0;
+          }
+
+          if (!cell.isPlaza) {
+            // Generate structural tiers and window patterns
+            const tierCount = type === 4 ? 3 : (type === 1 || type === 6 ? 1 : 2);
+            const tiers = [];
+            const themes = [
+              { left: '#1b2238', right: '#2d3656', top: '#414d7a', win: '#ffb347', neon: '#00f0ff' },
+              { left: '#171c2e', right: '#262f4a', top: '#3b466e', win: '#ff8a5b', neon: '#ff007f' },
+              { left: '#15242b', right: '#223842', top: '#335261', win: '#30e3ca', neon: '#ffd700' }
+            ];
+            const theme = themes[Math.floor(rng() * themes.length)];
+
+            for (let t = 0; t < tierCount; t++) {
+              const inset = t === 0 ? 0.05 : (t === 1 ? 0.18 : 0.3);
+              const hFrac = tierCount === 3 ? (t === 0 ? 0.48 : (t === 1 ? 0.32 : 0.2)) : (tierCount === 2 ? (t === 0 ? 0.68 : 0.32) : 1.0);
+              const numCols = Math.max(2, Math.floor((1 - inset * 2) * 5));
+              const numFloors = Math.max(3, Math.floor(hFrac * 14));
+              const leftWins = [];
+              const rightWins = [];
+              for (let f = 0; f < numFloors; f++) {
+                for (let c = 0; c < numCols; c++) {
+                  leftWins.push(rng() < 0.48);
+                  rightWins.push(rng() < 0.48);
+                }
+              }
+
+              tiers.push({
+                inset,
+                hFrac,
+                numCols,
+                numFloors,
+                leftWins,
+                rightWins,
+                theme
+              });
+            }
+
+            cell.building = {
+              type,
+              baseFactor,
+              tiers,
+              hasHelipad: (type === 1 || (baseFactor > 0.5 && rng() < 0.3)),
+              hasAntenna: (type === 0 || rng() < 0.4),
+              antennaHeight: 18 + rng() * 30,
+              beaconPhase: rng() * Math.PI * 2,
+              fanAngle: 0,
+              hasFan: (type === 2 || rng() < 0.35)
+            };
+          }
+        }
+        cells[x][y] = cell;
+      }
+    }
+
+    // Skybridge between Twin Towers
+    skybridges.push({
+      gx1: 12, gy1: 5,
+      gx2: 13, gy2: 5,
+      z: 104,
+      w: 12,
+      h: 14
+    });
+
+    // --- Elevated Transit Rail System & Catmull-Rom Path Generation ---
+    function catmullRomSpline(points, numSamples) {
+      const out = [];
+      const n = points.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = points[(i - 1 + n) % n];
+        const p1 = points[i];
+        const p2 = points[(i + 1) % n];
+        const p3 = points[(i + 2) % n];
+
+        const samplesPerSeg = Math.floor(numSamples / n);
+        for (let s = 0; s < samplesPerSeg; s++) {
+          const t = s / samplesPerSeg;
+          const t2 = t * t;
+          const t3 = t2 * t;
+
+          // Standard Catmull-Rom formula
+          const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+          const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+          const z = 0.5 * ((2 * p1.z) + (-p0.z + p2.z) * t + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3);
+
+          out.push({ x, y, z });
+        }
+      }
+      // Compute tangents and segment lengths
+      for (let i = 0; i < out.length; i++) {
+        const next = out[(i + 1) % out.length];
+        const prev = out[(i - 1 + out.length) % out.length];
+        const dx = next.x - prev.x;
+        const dy = next.y - prev.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        out[i].dirX = dx / len;
+        out[i].dirY = dy / len;
+      }
+      return out;
+    }
+
+    // Line 1: Mid-Tier Canyon Weave (z ~ 52)
+    const waypointsLine1 = [
+      { x: 3.5, y: 3.5, z: 52 },
+      { x: 3.5, y: 7.5, z: 52 },
+      { x: 3.5, y: 11.5, z: 52 },
+      { x: 7.5, y: 11.5, z: 52 },
+      { x: 7.5, y: 8.5, z: 52 },
+      { x: 9.0, y: 8.5, z: 52 }, // Cuts through Terminal
+      { x: 11.5, y: 8.5, z: 52 },
+      { x: 11.5, y: 14.5, z: 52 },
+      { x: 15.5, y: 14.5, z: 52 }, // Over waterfront
+      { x: 15.5, y: 7.5, z: 52 },
+      { x: 11.5, y: 7.5, z: 52 },
+      { x: 11.5, y: 3.5, z: 52 },
+      { x: 7.5, y: 3.5, z: 52 }
+    ];
+    const trackLine1 = catmullRomSpline(waypointsLine1, 260);
+
+    // Line 2: Upper Skyline Express (z ~ 92)
+    const waypointsLine2 = [
+      { x: 5.5, y: 3.5, z: 92 },
+      { x: 5.5, y: 7.5, z: 92 },
+      { x: 9.0, y: 7.5, z: 92 },
+      { x: 12.5, y: 5.5, z: 92 }, // Beneath Skybridge
+      { x: 14.5, y: 9.5, z: 92 },
+      { x: 12.5, y: 13.5, z: 92 },
+      { x: 7.5, y: 13.5, z: 92 },
+      { x: 7.5, y: 5.5, z: 92 }
+    ];
+    const trackLine2 = catmullRomSpline(waypointsLine2, 220);
+
+    // Generate Transit Support Pylons
+    const pylons = [];
+    for (let i = 0; i < trackLine1.length; i += 22) {
+      const pt = trackLine1[i];
+      pylons.push({ x: pt.x, y: pt.y, z: pt.z, line: 1 });
+    }
+    for (let i = 0; i < trackLine2.length; i += 26) {
+      const pt = trackLine2[i];
+      pylons.push({ x: pt.x, y: pt.y, z: pt.z, line: 2 });
+    }
+
+    // Maglev Train Entities
+    const trains = [
+      {
+        line: trackLine1,
+        trackIndex: 30,
+        speed: 0.95,
+        numCars: 4,
+        carSpacing: 8,
+        theme: {
+          hull: '#131b2e',
+          stripe: '#00f0ff',
+          win: '#ffd166',
+          spotlight: 'rgba(180, 245, 255, 0.45)',
+          spotlightGlow: 'rgba(0, 240, 255, 0.18)'
+        }
+      },
+      {
+        line: trackLine2,
+        trackIndex: 110,
+        speed: 1.25,
+        numCars: 3,
+        carSpacing: 9,
+        theme: {
+          hull: '#23182b',
+          stripe: '#ff9e00',
+          win: '#00f0ff',
+          spotlight: 'rgba(255, 235, 175, 0.45)',
+          spotlightGlow: 'rgba(255, 160, 0, 0.2)'
+        }
+      }
+    ];
+
+    // --- Animated Holographic Wireframe Billboards ---
+    const holograms = [
+      {
+        id: 'globe',
+        gx: 5.0, gy: 10.0, gz: 130,
+        anchor1: { gx: 5.0, gy: 9.0, gz: 130 },
+        anchor2: { gx: 5.0, gy: 11.0, gz: 130 },
+        color: '#00f0ff',
+        colorRgb: '0, 240, 255',
+        label: 'AETHERIS // QUANTUM CORE',
+        radius: 17
+      },
+      {
+        id: 'tesseract',
+        gx: 12.5, gy: 5.0, gz: 138,
+        anchor1: { gx: 12.0, gy: 5.0, gz: 138 },
+        anchor2: { gx: 13.0, gy: 5.0, gz: 138 },
+        color: '#ff007f',
+        colorRgb: '255, 0, 127',
+        label: 'SYNTHESIS // LABS V2',
+        radius: 15
+      },
+      {
+        id: 'equalizer',
+        gx: 9.0, gy: 7.5, gz: 112,
+        anchor1: { gx: 8.0, gy: 7.5, gz: 112 },
+        anchor2: { gx: 10.0, gy: 7.5, gz: 112 },
+        color: '#ffd700',
+        colorRgb: '255, 215, 0',
+        label: 'NEO-TRANSIT // RAPID EXPRESS',
+        radius: 16
+      }
+    ];
+
+    // --- Street-Level Vehicle Fleet & Traffic Lights ---
+    function getTrafficLightState(ix, iy, time) {
+      const offset = (ix * 0.4 + iy * 0.6);
+      const cycle = (time + offset) % 8.0;
+      if (cycle < 3.4) return { ew: 'green', ns: 'red' };
+      if (cycle < 4.0) return { ew: 'yellow', ns: 'red' };
+      if (cycle < 7.4) return { ew: 'red', ns: 'green' };
+      return { ew: 'red', ns: 'yellow' };
+    }
+
+    const MAX_VEHICLES = 75;
+    const vehicles = [];
+    for (let i = 0; i < MAX_VEHICLES; i++) {
+      const isEW = rng() < 0.5;
+      const roadCoord = ROAD_COORDS[Math.floor(rng() * ROAD_COORDS.length)];
+      const forward = rng() < 0.5;
+      let vx, vy, dirX, dirY;
+      if (isEW) {
+        dirX = forward ? 1 : -1;
+        dirY = 0;
+        vx = rng() * (GRID_SIZE - 2);
+        vy = roadCoord + (forward ? 0.68 : 0.32);
+      } else {
+        dirX = 0;
+        dirY = forward ? 1 : -1;
+        vx = roadCoord + (forward ? 0.68 : 0.32);
+        vy = rng() * (GRID_SIZE - 2);
+      }
+
+      vehicles.push({
+        x: vx, y: vy,
+        dirX, dirY,
+        speed: 0.038 + rng() * 0.024,
+        maxSpeed: 0.038 + rng() * 0.024,
+        trail: [],
+        headlightColor: rng() < 0.75 ? '#ffea79' : '#00f0ff'
+      });
+    }
+
+    // --- Isometric Drawing Helpers ---
+    function drawIsoFace(p0, p1, p2, p3, fillStyle, strokeStyle = null) {
+      ctx.fillStyle = fillStyle;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.closePath();
+      ctx.fill();
+      if (strokeStyle) {
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    function drawIsoPrism(gx, gy, gw, gd, z0, z1, leftCol, rightCol, topCol) {
+      const b1 = toScreen(gx + gw, gy, z0);
+      const b2 = toScreen(gx + gw, gy + gd, z0);
+      const b3 = toScreen(gx, gy + gd, z0);
+
+      const t0 = toScreen(gx, gy, z1);
+      const t1 = toScreen(gx + gw, gy, z1);
+      const t2 = toScreen(gx + gw, gy + gd, z1);
+      const t3 = toScreen(gx, gy + gd, z1);
+
+      // Left face (gx -> gx+gw along gy+gd)
+      drawIsoFace(b3, b2, t2, t3, leftCol);
+
+      // Right face (gy -> gy+gd along gx+gw)
+      drawIsoFace(b2, b1, t1, t2, rightCol);
+
+      // Top face
+      if (topCol) {
+        drawIsoFace(t0, t1, t2, t3, topCol, 'rgba(255, 255, 255, 0.06)');
+      }
+    }
+
+    // --- Render Loop Variables ---
+    let lastTime = performance.now();
+
+    function render(now) {
+      requestAnimationFrame(render);
+      window.__frames++;
+
+      const dt = Math.min((now - lastTime) * 0.001, 0.1);
+      lastTime = now;
+      const time = now * 0.001;
+
+      // 1. Dusk Horizon Sky & Atmospheric Backing
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, screenH);
+      skyGrad.addColorStop(0, '#060814');
+      skyGrad.addColorStop(0.35, '#121429');
+      skyGrad.addColorStop(0.68, '#251a38');
+      skyGrad.addColorStop(0.85, '#481f3d');
+      skyGrad.addColorStop(1, '#66243a');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, screenW, screenH);
+
+      // Sky Searchlights
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < skySearchlights.length; i++) {
+        const sl = skySearchlights[i];
+        sl.angle += sl.speed * dt;
+        const bx = screenW * sl.baseRelX;
+        const by = screenH * sl.baseRelY;
+        const tx = bx + Math.sin(sl.angle) * screenW * 0.45;
+        const ty = by - Math.cos(sl.angle) * screenH * 0.75;
+
+        const slGrad = ctx.createLinearGradient(bx, by, tx, ty);
+        slGrad.addColorStop(0, sl.color);
+        slGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = slGrad;
+        ctx.beginPath();
+        ctx.moveTo(bx - 12, by);
+        ctx.lineTo(bx + 12, by);
+        ctx.lineTo(tx + 45, ty);
+        ctx.lineTo(tx - 45, ty);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Distant Layered City Skyline (Background Silhouettes)
+      const distHorizonY = screenH * 0.58;
+      for (let i = 0; i < distantTowers.length; i++) {
+        const dtow = distantTowers[i];
+        const tx = dtow.xRel * screenW;
+        const ty = distHorizonY - dtow.h;
+
+        // Gradient body
+        const twGrad = ctx.createLinearGradient(tx, ty, tx, distHorizonY);
+        twGrad.addColorStop(0, '#1a182e');
+        twGrad.addColorStop(1, '#2b1d36');
+        ctx.fillStyle = twGrad;
+        ctx.fillRect(tx, ty, dtow.w, dtow.h);
+
+        // Window grid specks
+        ctx.fillStyle = 'rgba(255, 214, 110, 0.4)';
+        const rowH = dtow.h / dtow.winRows;
+        const colW = dtow.w / dtow.winCols;
+        for (let r = 0; r < dtow.winRows; r++) {
+          for (let c = 0; c < dtow.winCols; c++) {
+            if (dtow.litMap[(r * dtow.winCols + c) % dtow.litMap.length]) {
+              ctx.fillRect(tx + c * colW + 2, ty + r * rowH + 2, colW - 4, Math.max(1.5, rowH * 0.4));
+            }
+          }
+        }
+
+        // Spire & warning beacon
+        if (dtow.hasSpire) {
+          ctx.strokeStyle = '#333852';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(tx + dtow.w * 0.5, ty);
+          ctx.lineTo(tx + dtow.w * 0.5, ty - 18);
+          ctx.stroke();
+
+          if (Math.sin(time * 3.5 + dtow.beaconPhase) > 0.1) {
+            ctx.fillStyle = '#ff334b';
+            ctx.beginPath();
+            ctx.arc(tx + dtow.w * 0.5, ty - 18, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Distant atmospheric smog mist band
+      const smogGrad = ctx.createLinearGradient(0, distHorizonY - 60, 0, distHorizonY + 50);
+      smogGrad.addColorStop(0, 'rgba(40, 25, 48, 0)');
+      smogGrad.addColorStop(0.5, 'rgba(45, 26, 45, 0.7)');
+      smogGrad.addColorStop(1, 'rgba(20, 16, 32, 0.95)');
+      ctx.fillStyle = smogGrad;
+      ctx.fillRect(0, distHorizonY - 60, screenW, 110);
+
+      // 2. Foundation Pedestal & Quayside Substructure
+      const slabDepth = 32;
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const p1 = toScreen(x, GRID_SIZE, 0);
+        const p2 = toScreen(x + 1, GRID_SIZE, 0);
+        const p3 = toScreen(x + 1, GRID_SIZE, -slabDepth);
+        const p4 = toScreen(x, GRID_SIZE, -slabDepth);
+        ctx.fillStyle = '#0f1424';
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+        ctx.closePath(); ctx.fill();
+      }
+      for (let y = 0; y < GRID_SIZE; y++) {
+        const p1 = toScreen(GRID_SIZE, y + 1, 0);
+        const p2 = toScreen(GRID_SIZE, y, 0);
+        const p3 = toScreen(GRID_SIZE, y, -slabDepth);
+        const p4 = toScreen(GRID_SIZE, y + 1, -slabDepth);
+        ctx.fillStyle = '#181d33';
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // 3. Ground / Road / Water Surface Base Plane
+      for (let d = 0; d <= (GRID_SIZE - 1) * 2; d++) {
+        for (let gx = 0; gx < GRID_SIZE; gx++) {
+          const gy = d - gx;
+          if (gy < 0 || gy >= GRID_SIZE) continue;
+          const cell = cells[gx][gy];
+
+          const p0 = toScreen(gx, gy, 0);
+          const p1 = toScreen(gx + 1, gy, 0);
+          const p2 = toScreen(gx + 1, gy + 1, 0);
+          const p3 = toScreen(gx, gy + 1, 0);
+
+          if (cell.isWater) {
+            // Neon-reflecting deep canal water
+            const waterGrad = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
+            waterGrad.addColorStop(0, '#0a101f');
+            waterGrad.addColorStop(1, '#0e172e');
+            ctx.fillStyle = waterGrad;
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+            ctx.closePath(); ctx.fill();
+
+            // Animated specular ripples
+            const ripple = Math.sin((gx + gy) * 1.8 + time * 3.2);
+            if (ripple > 0.2) {
+              ctx.strokeStyle = `rgba(0, 240, 255, ${0.12 * ripple})`;
+              ctx.lineWidth = 1.2;
+              const rp1 = toScreen(gx + 0.2, gy + 0.5, 0);
+              const rp2 = toScreen(gx + 0.8, gy + 0.5, 0);
+              ctx.beginPath(); ctx.moveTo(rp1.x, rp1.y); ctx.lineTo(rp2.x, rp2.y); ctx.stroke();
+            }
+
+            // Bridge over water
+            if (cell.isBridge) {
+              drawIsoPrism(gx, gy + 0.1, 1.0, 0.8, 1, 4, '#1b2238', '#252e4a', '#323c61');
+              // Bridge safety rails
+              ctx.strokeStyle = '#00f0ff';
+              ctx.lineWidth = 1;
+              const br1 = toScreen(gx, gy + 0.1, 4.5);
+              const br2 = toScreen(gx + 1.0, gy + 0.1, 4.5);
+              ctx.beginPath(); ctx.moveTo(br1.x, br1.y); ctx.lineTo(br2.x, br2.y); ctx.stroke();
+            }
+          } else if (cell.isRoad) {
+            ctx.fillStyle = '#0f1322';
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+            ctx.closePath(); ctx.fill();
+
+            // Luminous Lane Center Dividers
+            if (gy % 4 === 3 && gx % 4 !== 3) {
+              const c1 = toScreen(gx + 0.15, gy + 0.5, 0);
+              const c2 = toScreen(gx + 0.85, gy + 0.5, 0);
+              ctx.strokeStyle = 'rgba(255, 180, 0, 0.35)';
+              ctx.lineWidth = 1.2;
+              ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+            } else if (gx % 4 === 3 && gy % 4 !== 3) {
+              const c1 = toScreen(gx + 0.5, gy + 0.15, 0);
+              const c2 = toScreen(gx + 0.5, gy + 0.85, 0);
+              ctx.strokeStyle = 'rgba(255, 180, 0, 0.35)';
+              ctx.lineWidth = 1.2;
+              ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+            }
+
+            // Crosswalks at Intersections
+            if (cell.isIntersection) {
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+              ctx.lineWidth = 1.5;
+              for (let k = 0.25; k <= 0.75; k += 0.25) {
+                const z1 = toScreen(gx + k, gy + 0.05, 0);
+                const z2 = toScreen(gx + k, gy + 0.22, 0);
+                ctx.beginPath(); ctx.moveTo(z1.x, z1.y); ctx.lineTo(z2.x, z2.y); ctx.stroke();
+                const z3 = toScreen(gx + k, gy + 0.78, 0);
+                const z4 = toScreen(gx + k, gy + 0.95, 0);
+                ctx.beginPath(); ctx.moveTo(z3.x, z3.y); ctx.lineTo(z4.x, z4.y); ctx.stroke();
+              }
+            }
+          } else {
+            // Building Parcel Base / Pedestrian Plaza
+            ctx.fillStyle = cell.isPlaza ? '#14202e' : '#121727';
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+            ctx.closePath(); ctx.fill();
+
+            if (cell.isPlaza) {
+              const c = toScreen(gx + 0.5, gy + 0.5, 0);
+              // Holographic plaza fountain
+              ctx.strokeStyle = '#00f0ff';
+              ctx.lineWidth = 1.2;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, 6.5, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.fillStyle = 'rgba(0, 240, 255, 0.25)';
+              ctx.fill();
+            }
+          }
+        }
+      }
+
+      // 4. Update Simulation: Vehicle Traffic & Maglev Trains
+      // Update street vehicles
+      for (let i = 0; i < vehicles.length; i++) {
+        const v = vehicles[i];
+        if (v.dirX !== 0) {
+          const nextIX = v.dirX > 0 ? Math.ceil(v.x / 4) * 4 : Math.floor(v.x / 4) * 4;
+          const dist = v.dirX > 0 ? (nextIX - v.x) : (v.x - nextIX);
+          if (dist > 0.08 && dist < 0.85) {
+            const roadY = Math.round(v.y);
+            const light = getTrafficLightState(nextIX, roadY, time);
+            if (light.ew === 'red' || (light.ew === 'yellow' && dist > 0.35)) {
+              v.speed = Math.max(0, v.speed - 0.0035 * speedSliderVal);
+            } else {
+              v.speed = Math.min(v.maxSpeed * speedSliderVal, v.speed + 0.002);
+            }
+          } else {
+            v.speed = Math.min(v.maxSpeed * speedSliderVal, v.speed + 0.002);
+          }
+        } else {
+          const nextIY = v.dirY > 0 ? Math.ceil(v.y / 4) * 4 : Math.floor(v.y / 4) * 4;
+          const dist = v.dirY > 0 ? (nextIY - v.y) : (v.y - nextIY);
+          if (dist > 0.08 && dist < 0.85) {
+            const roadX = Math.round(v.x);
+            const light = getTrafficLightState(roadX, nextIY, time);
+            if (light.ns === 'red' || (light.ns === 'yellow' && dist > 0.35)) {
+              v.speed = Math.max(0, v.speed - 0.0035 * speedSliderVal);
+            } else {
+              v.speed = Math.min(v.maxSpeed * speedSliderVal, v.speed + 0.002);
+            }
+          } else {
+            v.speed = Math.min(v.maxSpeed * speedSliderVal, v.speed + 0.002);
+          }
+        }
+
+        v.x += v.dirX * v.speed;
+        v.y += v.dirY * v.speed;
+
+        if (v.speed > 0.01) {
+          v.trail.unshift({ x: v.x, y: v.y });
+          if (v.trail.length > 4) v.trail.pop();
+        }
+
+        if (v.x > GRID_SIZE - 2.2) { v.x = -0.2; v.trail.length = 0; }
+        if (v.x < -0.2) { v.x = GRID_SIZE - 2.2; v.trail.length = 0; }
+        if (v.y > GRID_SIZE - 2.2) { v.y = -0.2; v.trail.length = 0; }
+        if (v.y < -0.2) { v.y = GRID_SIZE - 2.2; v.trail.length = 0; }
+      }
+
+      // Update Maglev Trains along tracks
+      for (let t = 0; t < trains.length; t++) {
+        const tr = trains[t];
+        tr.trackIndex = (tr.trackIndex + tr.speed * speedSliderVal * 0.42) % tr.line.length;
+      }
+
+      // 5. Unified Depth-Sorted Isometric Scene Rendering
+      // We iterate diagonally across the grid: d = gx + gy
+      for (let d = 0; d <= (GRID_SIZE - 1) * 2; d++) {
+        for (let gx = 0; gx < GRID_SIZE; gx++) {
+          const gy = d - gx;
+          if (gy < 0 || gy >= GRID_SIZE) continue;
+          const cell = cells[gx][gy];
+
+          // A. Traffic Signal Gantries at Intersections
+          if (cell.isIntersection) {
+            const pb = toScreen(gx + 0.9, gy + 0.9, 0);
+            const pt = toScreen(gx + 0.9, gy + 0.9, 15);
+            ctx.strokeStyle = '#272d47';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(pb.x, pb.y); ctx.lineTo(pt.x, pt.y); ctx.stroke();
+
+            const st = getTrafficLightState(gx, gy, time);
+            const colEW = st.ew === 'green' ? '#00f0ff' : (st.ew === 'yellow' ? '#ff9e00' : '#ff334b');
+            const colNS = st.ns === 'green' ? '#00f0ff' : (st.ns === 'yellow' ? '#ff9e00' : '#ff334b');
+
+            ctx.fillStyle = colEW;
+            ctx.beginPath(); ctx.arc(pt.x - 2.5, pt.y - 1, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = colNS;
+            ctx.beginPath(); ctx.arc(pt.x + 2.5, pt.y - 1, 2, 0, Math.PI * 2); ctx.fill();
+          }
+
+          // B. Street Vehicles in this Grid Cell
+          for (let vi = 0; vi < vehicles.length; vi++) {
+            const v = vehicles[vi];
+            if (Math.floor(v.x) === gx && Math.floor(v.y) === gy) {
+              // Taillight streak trail
+              if (v.trail.length > 1) {
+                ctx.strokeStyle = 'rgba(255, 51, 75, 0.7)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                for (let k = 0; k < v.trail.length; k++) {
+                  const tp = toScreen(v.trail[k].x, v.trail[k].y, 2);
+                  if (k === 0) ctx.moveTo(tp.x, tp.y);
+                  else ctx.lineTo(tp.x, tp.y);
+                }
+                ctx.stroke();
+              }
+
+              // Vehicle body
+              const vw = v.dirX !== 0 ? 0.32 : 0.16;
+              const vd = v.dirX !== 0 ? 0.16 : 0.32;
+              drawIsoPrism(v.x - vw * 0.5, v.y - vd * 0.5, vw, vd, 0.5, 4.2, '#182035', '#242f4c', '#38466e');
+
+              // Headlight projection
+              const fx = v.x + v.dirX * (vw * 0.5);
+              const fy = v.y + v.dirY * (vd * 0.5);
+              const fp = toScreen(fx, fy, 2);
+              const tpEnd = toScreen(fx + v.dirX * 0.5, fy + v.dirY * 0.5, 0);
+
+              const bGrad = ctx.createLinearGradient(fp.x, fp.y, tpEnd.x, tpEnd.y);
+              bGrad.addColorStop(0, v.headlightColor);
+              bGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              ctx.strokeStyle = bGrad;
+              ctx.lineWidth = 2.5;
+              ctx.beginPath(); ctx.moveTo(fp.x, fp.y); ctx.lineTo(tpEnd.x, tpEnd.y); ctx.stroke();
+            }
+          }
+
+          // C. Elevated Rail Pylons located in this Cell
+          for (let pi = 0; pi < pylons.length; pi++) {
+            const pyl = pylons[pi];
+            if (Math.floor(pyl.x) === gx && Math.floor(pyl.y) === gy) {
+              // Concrete pillar
+              drawIsoPrism(pyl.x - 0.15, pyl.y - 0.15, 0.3, 0.3, 0, pyl.z - 3, '#1c2438', '#26304a', '#394669');
+              // Luminous collar ring
+              const colZ = pyl.z - 6;
+              drawIsoPrism(pyl.x - 0.22, pyl.y - 0.22, 0.44, 0.44, colZ, colZ + 2.5, '#00f0ff', '#00c4d4', '#80f8ff');
+              // Crosshead bracket
+              drawIsoPrism(pyl.x - 0.35, pyl.y - 0.35, 0.7, 0.7, pyl.z - 3, pyl.z, '#26304a', '#323f61', '#455682');
+            }
+          }
+
+          // D. Elevated Rail Track Segments crossing this Cell
+          function renderTrackSegments(trackList, neonColor) {
+            for (let i = 0; i < trackList.length; i++) {
+              const node = trackList[i];
+              if (Math.floor(node.x) === gx && Math.floor(node.y) === gy) {
+                const nextNode = trackList[(i + 1) % trackList.length];
+                const p1 = toScreen(node.x, node.y, node.z);
+                const p2 = toScreen(nextNode.x, nextNode.y, nextNode.z);
+
+                // Concrete bed
+                ctx.strokeStyle = '#1a2236';
+                ctx.lineWidth = 4.5;
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+
+                // Glowing maglev power core
+                ctx.strokeStyle = neonColor;
+                ctx.lineWidth = 1.8;
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+
+                // Cross ties
+                if (i % 2 === 0) {
+                  const perpX = -node.dirY * 0.22;
+                  const perpY = node.dirX * 0.22;
+                  const tp1 = toScreen(node.x + perpX, node.y + perpY, node.z);
+                  const tp2 = toScreen(node.x - perpX, node.y - perpY, node.z);
+                  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+                  ctx.lineWidth = 1.2;
+                  ctx.beginPath(); ctx.moveTo(tp1.x, tp1.y); ctx.lineTo(tp2.x, tp2.y); ctx.stroke();
+                }
+              }
+            }
+          }
+          renderTrackSegments(trackLine1, '#00f0ff');
+          renderTrackSegments(trackLine2, '#ff9e00');
+
+          // E. Maglev Trains (Carriages & Dynamic Sweeping Facade Spotlights)
+          for (let ti = 0; ti < trains.length; ti++) {
+            const tr = trains[ti];
+            for (let c = 0; c < tr.numCars; c++) {
+              const carIdx = Math.floor((tr.trackIndex - c * tr.carSpacing + tr.line.length * 10) % tr.line.length);
+              const node = tr.line[carIdx];
+              if (Math.floor(node.x) === gx && Math.floor(node.y) === gy) {
+                const isLocomotive = (c === 0);
+                const carP = toScreen(node.x, node.y, node.z + 1);
+
+                // Car Body
+                const cw = 0.38, cd = 0.38, ch = 5;
+                drawIsoPrism(node.x - cw * 0.5, node.y - cd * 0.5, cw, cd, node.z + 1, node.z + 1 + ch,
+                  tr.theme.hull, '#2d3857', '#42517d');
+
+                // Luminous Maglev Skirt Stripe
+                ctx.strokeStyle = tr.theme.stripe;
+                ctx.lineWidth = 2.0;
+                const sp1 = toScreen(node.x - node.dirX * 0.25, node.y - node.dirY * 0.25, node.z + 2.5);
+                const sp2 = toScreen(node.x + node.dirX * 0.25, node.y + node.dirY * 0.25, node.z + 2.5);
+                ctx.beginPath(); ctx.moveTo(sp1.x, sp1.y); ctx.lineTo(sp2.x, sp2.y); ctx.stroke();
+
+                // Window Ribbon
+                ctx.strokeStyle = tr.theme.win;
+                ctx.lineWidth = 1.5;
+                const wp1 = toScreen(node.x - node.dirX * 0.18, node.y - node.dirY * 0.18, node.z + 4.5);
+                const wp2 = toScreen(node.x + node.dirX * 0.18, node.y + node.dirY * 0.18, node.z + 4.5);
+                ctx.beginPath(); ctx.moveTo(wp1.x, wp1.y); ctx.lineTo(wp2.x, wp2.y); ctx.stroke();
+
+                // Locomotive Sweeping Spotlight
+                if (isLocomotive) {
+                  const sweep = Math.sin(time * 3.4 + ti) * 0.32;
+                  const sweepDirX = node.dirX * Math.cos(sweep) - node.dirY * Math.sin(sweep);
+                  const sweepDirY = node.dirX * Math.sin(sweep) + node.dirY * Math.cos(sweep);
+
+                  const noseP = toScreen(node.x + node.dirX * 0.28, node.y + node.dirY * 0.28, node.z + 3.5);
+                  const beamLen = 3.5;
+                  const beamTarget = toScreen(
+                    node.x + sweepDirX * beamLen,
+                    node.y + sweepDirY * beamLen,
+                    Math.max(0, node.z - 12)
+                  );
+
+                  // Additive Sweeping Light Cone
+                  ctx.globalCompositeOperation = 'lighter';
+                  const spotGrad = ctx.createLinearGradient(noseP.x, noseP.y, beamTarget.x, beamTarget.y);
+                  spotGrad.addColorStop(0, tr.theme.spotlight);
+                  spotGrad.addColorStop(0.4, tr.theme.spotlightGlow);
+                  spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                  ctx.fillStyle = spotGrad;
+                  const perpBx = -sweepDirY * 1.1;
+                  const perpBy = sweepDirX * 1.1;
+                  const bCone1 = toScreen(node.x + sweepDirX * beamLen + perpBx, node.y + sweepDirY * beamLen + perpBy, node.z - 12);
+                  const bCone2 = toScreen(node.x + sweepDirX * beamLen - perpBx, node.y + sweepDirY * beamLen - perpBy, node.z - 12);
+
+                  ctx.beginPath();
+                  ctx.moveTo(noseP.x, noseP.y);
+                  ctx.lineTo(bCone1.x, bCone1.y);
+                  ctx.lineTo(bCone2.x, bCone2.y);
+                  ctx.closePath();
+                  ctx.fill();
+
+                  // Dynamic Facade Spotlight Wash on adjacent buildings
+                  const targetCellX = Math.round(node.x + sweepDirX * 1.8);
+                  const targetCellY = Math.round(node.y + sweepDirY * 1.8);
+                  if (targetCellX >= 0 && targetCellX < GRID_SIZE && targetCellY >= 0 && targetCellY < GRID_SIZE) {
+                    const hitBldg = cells[targetCellX][targetCellY].building;
+                    if (hitBldg) {
+                      const hitP = toScreen(targetCellX + 0.5, targetCellY + 0.5, node.z);
+                      const hitGrad = ctx.createRadialGradient(hitP.x, hitP.y, 2, hitP.x, hitP.y, 22);
+                      hitGrad.addColorStop(0, `rgba(255, 240, 200, ${0.45 * glowSliderVal})`);
+                      hitGrad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+                      ctx.fillStyle = hitGrad;
+                      ctx.beginPath();
+                      ctx.ellipse(hitP.x, hitP.y, 24, 14, 0, 0, Math.PI * 2);
+                      ctx.fill();
+                    }
+                  }
+                  ctx.globalCompositeOperation = 'source-over';
+                }
+              }
+            }
+          }
+
+          // F. Skybridge Crossway at (12, 5) -> (13, 5)
+          for (let sb = 0; sb < skybridges.length; sb++) {
+            const bridge = skybridges[sb];
+            if (bridge.gx1 === gx && bridge.gy1 === gy) {
+              drawIsoPrism(gx + 0.8, gy + 0.35, 1.4, 0.3, bridge.z, bridge.z + bridge.h, '#1c2438', '#2d3754', '#414e75');
+              // Illuminated glass windows
+              const wp1 = toScreen(gx + 0.85, gy + 0.5, bridge.z + 3);
+              const wp2 = toScreen(gx + 2.15, gy + 0.5, bridge.z + 3);
+              ctx.strokeStyle = '#00f0ff';
+              ctx.lineWidth = 2.5;
+              ctx.beginPath(); ctx.moveTo(wp1.x, wp1.y); ctx.lineTo(wp2.x, wp2.y); ctx.stroke();
+            }
+          }
+
+          // G. Animated Holographic Wireframe Billboards
+          for (let hi = 0; hi < holograms.length; hi++) {
+            const holo = holograms[hi];
+            if (Math.floor(holo.gx) === gx && Math.floor(holo.gy) === gy) {
+              const hp = toScreen(holo.gx, holo.gy, holo.gz);
+              const a1 = toScreen(holo.anchor1.gx, holo.anchor1.gy, holo.anchor1.gz);
+              const a2 = toScreen(holo.anchor2.gx, holo.anchor2.gy, holo.anchor2.gz);
+
+              // High-tension mounting suspension cables
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(a1.x, a1.y); ctx.lineTo(hp.x, hp.y);
+              ctx.moveTo(a2.x, a2.y); ctx.lineTo(hp.x, hp.y);
+              ctx.stroke();
+
+              // Laser Emitter Nodes
+              ctx.fillStyle = holo.color;
+              ctx.beginPath();
+              ctx.arc(a1.x, a1.y, 2.5, 0, Math.PI * 2);
+              ctx.arc(a2.x, a2.y, 2.5, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Additive Holographic Rendering
+              ctx.globalCompositeOperation = 'lighter';
+              const holoAlpha = (0.75 + 0.25 * Math.sin(time * 6.0 + hi)) * glowSliderVal;
+
+              if (holo.id === 'globe') {
+                // Rotating 3D Wireframe Globe with Orbit Rings
+                const R = holo.radius;
+                const rotY = time * 1.1;
+                ctx.strokeStyle = `rgba(${holo.colorRgb}, ${holoAlpha})`;
+                ctx.lineWidth = 1.2;
+
+                // Latitude rings
+                [-0.5, 0, 0.5].forEach(lat => {
+                  const rLat = R * Math.cos(lat);
+                  const yOff = R * Math.sin(lat);
+                  ctx.beginPath();
+                  ctx.ellipse(hp.x, hp.y + yOff * 0.5, rLat, rLat * 0.45, 0, 0, Math.PI * 2);
+                  ctx.stroke();
+                });
+
+                // Longitude ellipses
+                for (let a = 0; a < Math.PI; a += Math.PI / 3) {
+                  const curA = a + rotY;
+                  const rx = Math.abs(R * Math.cos(curA));
+                  ctx.beginPath();
+                  ctx.ellipse(hp.x, hp.y, rx, R * 0.75, 0, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
+
+                // Tilted Orbit Satellite Ring
+                ctx.strokeStyle = `rgba(255, 255, 255, ${holoAlpha * 0.8})`;
+                ctx.beginPath();
+                ctx.ellipse(hp.x, hp.y, R * 1.35, R * 0.35, 0.45, 0, Math.PI * 2);
+                ctx.stroke();
+
+              } else if (holo.id === 'tesseract') {
+                // Rotating 4D Hypercube / Tesseract Wireframe
+                const R1 = holo.radius;
+                const R2 = holo.radius * 0.48;
+                const rot = time * 0.9;
+                ctx.strokeStyle = `rgba(${holo.colorRgb}, ${holoAlpha})`;
+                ctx.lineWidth = 1.4;
+
+                const outerPts = [];
+                const innerPts = [];
+                for (let k = 0; k < 4; k++) {
+                  const a = rot + (k * Math.PI) / 2;
+                  outerPts.push({ x: hp.x + Math.cos(a) * R1, y: hp.y + Math.sin(a) * R1 * 0.6 });
+                  innerPts.push({ x: hp.x + Math.cos(a + 0.3) * R2, y: hp.y + Math.sin(a + 0.3) * R2 * 0.6 });
+                }
+
+                // Connect Outer
+                ctx.beginPath();
+                for (let k = 0; k < 4; k++) {
+                  const pNext = outerPts[(k + 1) % 4];
+                  ctx.moveTo(outerPts[k].x, outerPts[k].y);
+                  ctx.lineTo(pNext.x, pNext.y);
+                }
+                // Connect Inner
+                for (let k = 0; k < 4; k++) {
+                  const pNext = innerPts[(k + 1) % 4];
+                  ctx.moveTo(innerPts[k].x, innerPts[k].y);
+                  ctx.lineTo(pNext.x, pNext.y);
+                }
+                // Connect Struts
+                for (let k = 0; k < 4; k++) {
+                  ctx.moveTo(outerPts[k].x, outerPts[k].y);
+                  ctx.lineTo(innerPts[k].x, innerPts[k].y);
+                }
+                ctx.stroke();
+
+              } else if (holo.id === 'equalizer') {
+                // Animated Frequency Audio Equalizer & Emblem
+                ctx.strokeStyle = `rgba(${holo.colorRgb}, ${holoAlpha})`;
+                ctx.lineWidth = 1.6;
+                const bars = 9;
+                const totalW = holo.radius * 2.2;
+                for (let b = 0; b < bars; b++) {
+                  const bx = hp.x - totalW * 0.5 + (b / (bars - 1)) * totalW;
+                  const bH = 6 + 18 * Math.abs(Math.sin(time * 4.2 + b * 0.65));
+                  ctx.beginPath();
+                  ctx.moveTo(bx, hp.y + 6);
+                  ctx.lineTo(bx, hp.y + 6 - bH);
+                  ctx.stroke();
+                }
+              }
+
+              // Hologram Typography Readout
+              ctx.fillStyle = `rgba(${holo.colorRgb}, ${holoAlpha * 0.9})`;
+              ctx.font = '600 7px monospace';
+              ctx.textAlign = 'center';
+              ctx.fillText(holo.label, hp.x, hp.y + holo.radius + 7);
+
+              // Horizontal Glitch Scanlines
+              ctx.strokeStyle = `rgba(${holo.colorRgb}, ${holoAlpha * 0.22})`;
+              ctx.lineWidth = 1;
+              for (let sl = -holo.radius; sl <= holo.radius; sl += 4) {
+                ctx.beginPath();
+                ctx.moveTo(hp.x - holo.radius * 1.2, hp.y + sl);
+                ctx.lineTo(hp.x + holo.radius * 1.2, hp.y + sl);
+                ctx.stroke();
+              }
+              ctx.globalCompositeOperation = 'source-over';
+            }
+          }
+
+          // H. Buildings & Architectural Typologies
+          const bldg = cell.building;
+          if (bldg) {
+            const totalH = bldg.baseFactor * heightSliderVal * 7.5;
+            let curZ = 0;
+
+            // Render Tiers
+            for (let t = 0; t < bldg.tiers.length; t++) {
+              const tier = bldg.tiers[t];
+              const tierH = Math.max(10, totalH * tier.hFrac);
+              const z0 = curZ;
+              const z1 = curZ + tierH;
+              curZ = z1;
+
+              const inset = tier.inset;
+              const gw = 1.0 - inset * 2;
+              const gd = 1.0 - inset * 2;
+              const bx = gx + inset;
+              const by = gy + inset;
+
+              // Dramatic Vertical Gradient Facades (Simulating Deep Canyon Ambient Occlusion)
+              const bScreenBot = toScreen(bx + gw * 0.5, by + gd, z0);
+              const bScreenTop = toScreen(bx + gw * 0.5, by + gd, z1);
+              const faceGradLeft = ctx.createLinearGradient(bScreenBot.x, bScreenBot.y, bScreenTop.x, bScreenTop.y);
+              faceGradLeft.addColorStop(0, '#0c101d');
+              faceGradLeft.addColorStop(1, tier.theme.left);
+
+              const faceGradRight = ctx.createLinearGradient(bScreenBot.x, bScreenBot.y, bScreenTop.x, bScreenTop.y);
+              faceGradRight.addColorStop(0, '#111729');
+              faceGradRight.addColorStop(1, tier.theme.right);
+
+              // Render Prism Geometry
+              drawIsoPrism(bx, by, gw, gd, z0, z1, faceGradLeft, faceGradRight, tier.theme.top);
+
+              // Lit Windows on Facades
+              if (tierH >= 14) {
+                const floorH = tierH / tier.numFloors;
+                const winH = Math.max(2, floorH * 0.45);
+                const colWLeft = gw / tier.numCols;
+                const colWRight = gd / tier.numCols;
+
+                // Left face windows
+                for (let f = 0; f < tier.numFloors; f++) {
+                  const wz0 = z0 + f * floorH + floorH * 0.25;
+                  const wz1 = wz0 + winH;
+                  for (let c = 0; c < tier.numCols; c++) {
+                    if (tier.leftWins[f * tier.numCols + c]) {
+                      const wx0 = bx + (c + 0.2) * colWLeft;
+                      const wx1 = wx0 + colWLeft * 0.6;
+                      const p1 = toScreen(wx0, by + gd, wz0);
+                      const p2 = toScreen(wx1, by + gd, wz0);
+                      const p3 = toScreen(wx1, by + gd, wz1);
+                      const p4 = toScreen(wx0, by + gd, wz1);
+
+                      ctx.fillStyle = tier.theme.win;
+                      ctx.globalAlpha = glowSliderVal * (0.8 + 0.2 * Math.sin(time * 2.4 + f + c));
+                      ctx.beginPath();
+                      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+                      ctx.closePath(); ctx.fill();
+                    }
+                  }
+                }
+
+                // Right face windows
+                for (let f = 0; f < tier.numFloors; f++) {
+                  const wz0 = z0 + f * floorH + floorH * 0.25;
+                  const wz1 = wz0 + winH;
+                  for (let c = 0; c < tier.numCols; c++) {
+                    if (tier.rightWins[f * tier.numCols + c]) {
+                      const wy0 = by + (c + 0.2) * colWRight;
+                      const wy1 = wy0 + colWRight * 0.6;
+                      const p1 = toScreen(bx + gw, wy0, wz0);
+                      const p2 = toScreen(bx + gw, wy1, wz0);
+                      const p3 = toScreen(bx + gw, wy1, wz1);
+                      const p4 = toScreen(bx + gw, wy0, wz1);
+
+                      ctx.fillStyle = tier.theme.win;
+                      ctx.globalAlpha = glowSliderVal * (0.8 + 0.2 * Math.sin(time * 2.4 + f * 2 + c));
+                      ctx.beginPath();
+                      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+                      ctx.closePath(); ctx.fill();
+                    }
+                  }
+                }
+                ctx.globalAlpha = 1.0;
+              }
+
+              // Rooftop Features (Top-most tier)
+              if (t === bldg.tiers.length - 1) {
+                const roofCenter = toScreen(gx + 0.5, gy + 0.5, z1);
+
+                // Typology 0: Apex Spire with Crimson Beacon & Pulsing Neon Rings
+                if (bldg.type === 0) {
+                  const tipY = roofCenter.y - bldg.antennaHeight * 1.5;
+                  ctx.strokeStyle = '#5b6480';
+                  ctx.lineWidth = 2.0;
+                  ctx.beginPath();
+                  ctx.moveTo(roofCenter.x, roofCenter.y);
+                  ctx.lineTo(roofCenter.x, tipY);
+                  ctx.stroke();
+
+                  // Neon spire rings
+                  ctx.strokeStyle = tier.theme.neon;
+                  ctx.lineWidth = 1.5;
+                  ctx.beginPath();
+                  ctx.ellipse(roofCenter.x, roofCenter.y - bldg.antennaHeight * 0.6, 5, 2.5, 0, 0, Math.PI * 2);
+                  ctx.stroke();
+
+                  // Pulsing beacon
+                  if (Math.sin(time * 4.5 + bldg.beaconPhase) > 0.05) {
+                    ctx.fillStyle = '#ff334b';
+                    ctx.beginPath();
+                    ctx.arc(roofCenter.x, tipY, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = 'rgba(255, 51, 75, 0.4)';
+                    ctx.beginPath();
+                    ctx.arc(roofCenter.x, tipY, 6.0, 0, Math.PI * 2);
+                    ctx.fill();
+                  }
+                }
+
+                // Typology 1: Circular Helipad with Glowing Perimeter Approach Lights
+                if (bldg.hasHelipad) {
+                  ctx.strokeStyle = '#00f0ff';
+                  ctx.lineWidth = 1.8;
+                  ctx.beginPath();
+                  ctx.arc(roofCenter.x, roofCenter.y, 7.5, 0, Math.PI * 2);
+                  ctx.stroke();
+
+                  ctx.fillStyle = '#00f0ff';
+                  ctx.font = 'bold 8px monospace';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText('H', roofCenter.x, roofCenter.y);
+
+                  // Perimeter blinking LEDs
+                  for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
+                    const ledX = roofCenter.x + Math.cos(a + time * 2) * 7.5;
+                    const ledY = roofCenter.y + Math.sin(a + time * 2) * 3.8;
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillRect(ledX - 1, ledY - 1, 2, 2);
+                  }
+                }
+
+                // Typology 2: Heavy Cooling Louvers & Industrial HVAC Fans
+                if (bldg.hasFan) {
+                  drawIsoPrism(gx + 0.25, gy + 0.25, 0.25, 0.25, z1, z1 + 6, '#182035', '#242f4c', '#38466e');
+                  bldg.fanAngle += 4.5 * dt;
+                  const fanCenter = toScreen(gx + 0.37, gy + 0.37, z1 + 6);
+                  ctx.strokeStyle = '#8fa0c4';
+                  ctx.lineWidth = 1.5;
+                  ctx.beginPath();
+                  ctx.moveTo(fanCenter.x - Math.cos(bldg.fanAngle) * 4, fanCenter.y - Math.sin(bldg.fanAngle) * 2);
+                  ctx.lineTo(fanCenter.x + Math.cos(bldg.fanAngle) * 4, fanCenter.y + Math.sin(bldg.fanAngle) * 2);
+                  ctx.stroke();
+                }
+
+                // Typology 3: Canted Glass Atrium Roof
+                if (bldg.type === 3) {
+                  const ap1 = toScreen(bx, by, z1);
+                  const ap2 = toScreen(bx + gw, by, z1);
+                  const ap3 = toScreen(bx + gw, by + gd, z1 + 10);
+                  const ap4 = toScreen(bx, by + gd, z1 + 10);
+                  ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
+                  ctx.beginPath();
+                  ctx.moveTo(ap1.x, ap1.y); ctx.lineTo(ap2.x, ap2.y); ctx.lineTo(ap3.x, ap3.y); ctx.lineTo(ap4.x, ap4.y);
+                  ctx.closePath(); ctx.fill();
+                  ctx.strokeStyle = '#00f0ff';
+                  ctx.lineWidth = 1;
+                  ctx.stroke();
+                }
+
+                // Standard Antenna
+                if (bldg.type !== 0 && bldg.hasAntenna) {
+                  const tipY = roofCenter.y - bldg.antennaHeight;
+                  ctx.strokeStyle = '#556080';
+                  ctx.lineWidth = 1.5;
+                  ctx.beginPath(); ctx.moveTo(roofCenter.x, roofCenter.y); ctx.lineTo(roofCenter.x, tipY); ctx.stroke();
+                  if (Math.sin(time * 3.8 + bldg.beaconPhase) > 0.15) {
+                    ctx.fillStyle = '#ff334b';
+                    ctx.beginPath(); ctx.arc(roofCenter.x, tipY, 2.0, 0, Math.PI * 2); ctx.fill();
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 6. Volumetric Canyon Mist Atmosphere
+      const canyonMist = ctx.createLinearGradient(0, screenH * 0.72, 0, screenH);
+      canyonMist.addColorStop(0, 'rgba(11, 15, 28, 0)');
+      canyonMist.addColorStop(1, 'rgba(9, 13, 24, 0.65)');
+      ctx.fillStyle = canyonMist;
+      ctx.fillRect(0, screenH * 0.72, screenW, screenH * 0.28);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

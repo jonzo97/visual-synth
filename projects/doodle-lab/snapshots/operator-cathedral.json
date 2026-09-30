@@ -1,0 +1,14 @@
+{
+ "title": "Operator Cathedral",
+ "blurb": "Operator Bloom phase-modulation folded into a {7,3} disk; an LFO breathes the modulation depth.",
+ "chain": "Operator Bloom → Hyperbolic Map → Glow · LFO → Modulation depth",
+ "tags": [
+  "synth snapshot",
+  "operator"
+ ],
+ "controls": "Knobs: Modulation depth, Polygon sides, Seam darkness, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#operator-cathedral"
+}

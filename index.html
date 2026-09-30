@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Visual Synth and Doodle Lab: a modular WebGPU visual synthesizer and a shelf of playable browser doodles.">
+<title>Visual Synth</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%23ff8a3d%22/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f1ea;
+    --card: #fffdf8;
+    --ink: #1d1f1e;
+    --muted: #5b605d;
+    --line: #d9d3c6;
+    --accent: #c2410c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111516;
+      --card: #1a2021;
+      --ink: #ecebe6;
+      --muted: #a3a8a4;
+      --line: #2c3536;
+      --accent: #ff8a3d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 56px 16px 64px; }
+  .kicker { margin: 0 0 4px; color: var(--accent); font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  h1 { font-size: clamp(2rem, 6vw, 2.8rem); letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 32px; max-width: 60ch; }
+  .cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card);
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .card:hover, .card:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+  .card h2 { margin: 0; font-size: 1.2rem; }
+  .card h2::after { content: " \2192"; color: var(--accent); }
+  .card p { margin: 0; color: var(--muted); }
+  .keys { margin-top: auto; padding-top: 8px; font-size: 0.85rem; color: var(--muted); }
+  .note { margin: 32px 0 0; color: var(--muted); font-size: 0.95rem; }
+  .note strong { color: var(--ink); font-weight: 600; }
+  kbd { font: 0.85em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">Tinkerbox</p>
+  <h1>Visual Synth</h1>
+  <p class="lede">A modular visual synthesizer for the GPU, plus a shelf of small playable doodles. Everything runs locally in your browser.</p>
+  <nav class="cards" aria-label="Pages">
+    <a class="card" href="/projects/doodle-lab/">
+      <h2>Doodle Lab</h2>
+      <p>Simulations, optics and generative sketches. Peek at any card live, then play it full screen. Synth snapshots open in the Player.</p>
+      <span class="keys"><kbd>/</kbd> search · <kbd>Esc</kbd> close</span>
+    </a>
+    <a class="card" href="/projects/shader-lab/player.html">
+      <h2>Player</h2>
+      <p>Finished patches as instruments: three knobs, a Morph wheel, Mutate and Randomize. A MIDI controller can drive them.</p>
+      <span class="keys"><kbd>←</kbd> <kbd>→</kbd> step · <kbd>M</kbd> mutate · <kbd>H</kbd> hide UI</span>
+    </a>
+    <a class="card" href="/projects/shader-lab/">
+      <h2>Visual Synth editor</h2>
+      <p>The full modular editor. Wire sources through effects and modulation, bring in your own video, record a take and export a clip.</p>
+      <span class="keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · hold <kbd>G</kbd> gate</span>
+    </a>
+  </nav>
+  <p class="note" id="gpu"><strong>WebGPU needs Chrome or Edge 113+.</strong> The Visual Synth and Player use it; the Doodle Lab runs in any current browser.</p>
+</main>
+<script>
+  // Say whether this browser can run the Visual Synth, without blocking anything.
+  const note = document.getElementById("gpu");
+  const say = (text) => note.append(" " + text);
+  if (!("gpu" in navigator)) say("This browser has no WebGPU.");
+  else navigator.gpu.requestAdapter().then(
+    (adapter) => say(adapter ? "This browser has WebGPU." : "This browser has WebGPU but found no usable GPU."),
+    () => say("This browser's WebGPU did not start."),
+  );
+</script>
+</body>
+</html>

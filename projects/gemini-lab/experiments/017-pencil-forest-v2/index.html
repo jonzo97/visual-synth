@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coloured Pencil Forest Generator v2</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #101417;
+  }
+  #forest-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #ui-overlay {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    background: rgba(16, 20, 24, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: #e0e6ed;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    width: 240px;
+    user-select: none;
+    z-index: 1000;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  }
+  #ui-overlay.hidden {
+    display: none;
+  }
+  .title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 12px;
+    letter-spacing: 0.3px;
+    color: #f7fff7;
+  }
+  .control-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: #b2dbbf;
+  }
+  .control-row span {
+    font-weight: bold;
+    color: #ffe66d;
+  }
+  input[type="range"] {
+    width: 100%;
+    margin: 0 0 4px 0;
+    accent-color: #ff6b6b;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="forest-canvas"></canvas>
+
+<div id="ui-overlay">
+  <div class="title">Coloured Pencil Forest Generator v2</div>
+  <div class="control-row">
+    <label for="slider-radiance">Lantern Radiance</label>
+    <span id="val-radiance">6</span>
+  </div>
+  <input type="range" id="slider-radiance" min="2" max="10" step="1" value="6">
+  
+  <div class="control-row">
+    <label for="slider-breeze">Forest Breeze</label>
+    <span id="val-breeze">5</span>
+  </div>
+  <input type="range" id="slider-breeze" min="1" max="10" step="1" value="5">
+  
+  <div class="control-row">
+    <label for="slider-life">Woodland Life</label>
+    <span id="val-life">3</span>
+  </div>
+  <input type="range" id="slider-life" min="1" max="5" step="1" value="3">
+</div>
+
+<script>
+window.__frames = 0;
+
+const urlParams = new URLSearchParams(window.location.search);
+const seedParam = parseInt(urlParams.get('seed') || '1', 10);
+const currentSeed = isNaN(seedParam) ? 1 : seedParam;
+
+function createPrng(seed) {
+  let s = (seed >>> 0) || 1;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const mainCanvas = document.getElementById('forest-canvas');
+const mainCtx = mainCanvas.getContext('2d');
+const staticCanvas = document.createElement('canvas');
+const staticCtx = staticCanvas.getContext('2d');
+
+const overlay = document.getElementById('ui-overlay');
+const sliderRadiance = document.getElementById('slider-radiance');
+const sliderBreeze = document.getElementById('slider-breeze');
+const sliderLife = document.getElementById('slider-life');
+const valRadiance = document.getElementById('val-radiance');
+const valBreeze = document.getElementById('val-breeze');
+const valLife = document.getElementById('val-life');
+
+let radiance = parseInt(sliderRadiance.value, 10);
+let breeze = parseInt(sliderBreeze.value, 10);
+let life = parseInt(sliderLife.value, 10);
+
+let dpr = 1;
+let W = 1280;
+let H = 720;
+
+let staticPrng = createPrng(currentSeed);
+
+const toothCanvas = document.createElement('canvas');
+toothCanvas.width = 256;
+toothCanvas.height = 256;
+const toothCtx = toothCanvas.getContext('2d');
+let toothPattern = null;
+
+function initToothPattern() {
+  toothCtx.fillStyle = '#101417';
+  toothCtx.fillRect(0, 0, 256, 256);
+  const pPrng = createPrng(42);
+  for (let i = 0; i < 3500; i++) {
+    const px = pPrng() * 256;
+    const py = pPrng() * 256;
+    const len = 1.2 + pPrng() * 3.0;
+    const ang = pPrng() * Math.PI * 2;
+    const shade = pPrng();
+    if (shade > 0.55) {
+      toothCtx.strokeStyle = '#22292f';
+      toothCtx.globalAlpha = 0.22 * pPrng();
+    } else {
+      toothCtx.strokeStyle = '#080a0c';
+      toothCtx.globalAlpha = 0.28 * pPrng();
+    }
+    toothCtx.lineWidth = 0.8;
+    toothCtx.beginPath();
+    toothCtx.moveTo(px, py);
+    toothCtx.lineTo(px + Math.cos(ang) * len, py + Math.sin(ang) * len);
+    toothCtx.stroke();
+  }
+  toothPattern = staticCtx.createPattern(toothCanvas, 'repeat');
+}
+initToothPattern();
+
+function drawPencilLine(ctx, x1, y1, x2, y2, color, width, alpha, prng) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1) return;
+
+  const nx = -dy / dist;
+  const ny = dx / dist;
+  const steps = Math.max(3, Math.min(24, Math.floor(dist / (4 * dpr))));
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.globalAlpha = Math.min(1, alpha * 0.85);
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const j = (prng() - 0.5) * 1.1 * dpr;
+    ctx.lineTo(x1 + dx * t + nx * j, y1 + dy * t + ny * j);
+  }
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  ctx.globalAlpha = Math.min(1, alpha * 0.45);
+  ctx.lineWidth = Math.max(0.6 * dpr, width * 0.55);
+  ctx.beginPath();
+  let penDown = true;
+  ctx.moveTo(x1 + nx * (prng() - 0.5) * dpr, y1 + ny * (prng() - 0.5) * dpr);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if (prng() < 0.12) {
+      penDown = false;
+    } else {
+      const j = (prng() - 0.5) * 1.8 * dpr;
+      const px = x1 + dx * t + nx * j;
+      const py = y1 + dy * t + ny * j;
+      if (!penDown) {
+        ctx.moveTo(px, py);
+        penDown = true;
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+  }
+  if (penDown) ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPencilCurve(ctx, x0, y0, cx, cy, x1, y1, color, width, alpha, prng) {
+  const steps = 14;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = width;
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const it = 1 - t;
+    const px = it * it * x0 + 2 * it * t * cx + t * t * x1;
+    const py = it * it * y0 + 2 * it * t * cy + t * t * y1;
+    const jx = (prng() - 0.5) * 1.0 * dpr;
+    const jy = (prng() - 0.5) * 1.0 * dpr;
+    ctx.lineTo(px + jx, py + jy);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+let sceneData = {
+  hillFuncs: [],
+  gnomes: [],
+  trees: [],
+  foxPos: { x: 0, y: 0, scale: 1, facing: -1 },
+  owlPos: { x: 0, y: 0, scale: 1, facing: 1 }
+};
+
+const SPORE_COUNT = 36;
+const sporeParticles = [];
+function initSpores() {
+  sporeParticles.length = 0;
+  const spPrng = createPrng(currentSeed + 999);
+  for (let i = 0; i < SPORE_COUNT; i++) {
+    sporeParticles.push({
+      x: spPrng() * W,
+      y: spPrng() * H,
+      baseSpeed: 0.4 + spPrng() * 0.9,
+      size: (1.2 + spPrng() * 2.2) * dpr,
+      phase: spPrng() * Math.PI * 2,
+      phaseY: spPrng() * Math.PI * 2,
+      color: spPrng() > 0.4 ? '#ffe66d' : (spPrng() > 0.5 ? '#b2dbbf' : '#f7fff7')
+    });
+  }
+}
+
+function drawOrganicConifer(ctx, tx, ty, Ht, Wt, prng) {
+  const trunkBaseW = Ht * 0.08;
+  const trunkTopW = trunkBaseW * 0.25;
+  const trunkSteps = 12;
+
+  for (let i = -2; i <= 2; i++) {
+    const xOff = (i / 2) * (trunkBaseW * 0.4);
+    const col = (i === 0) ? '#4a3d32' : (i < 0 ? '#26201b' : '#735b49');
+    drawPencilLine(ctx, tx + xOff, ty, tx + xOff * 0.35, ty - Ht * 0.85, col, 1.3 * dpr, 0.75, prng);
+  }
+
+  const tiers = 6 + Math.floor(prng() * 3);
+  for (let k = 0; k < tiers; k++) {
+    const prog = k / tiers;
+    const tierY = ty - Ht * (0.22 + 0.68 * prog);
+    const tierW = Wt * (1.0 - 0.75 * prog) * (0.85 + 0.3 * prng());
+    const droop = (8 + 24 * (1.0 - prog)) * dpr;
+
+    const boughCount = 5 + Math.floor(prng() * 3);
+    for (let b = 0; b < boughCount; b++) {
+      const side = (b % 2 === 0) ? -1 : 1;
+      const bProgress = (Math.floor(b / 2) + 0.5) / (boughCount * 0.5);
+      const bLen = tierW * bProgress;
+      const endX = tx + side * bLen;
+      const endY = tierY + droop * (0.4 + 0.6 * bProgress);
+      const ctrlX = tx + side * bLen * 0.55;
+      const ctrlY = tierY - 2 * dpr;
+
+      drawPencilCurve(ctx, tx, tierY, ctrlX, ctrlY, endX, endY, '#203b34', 1.4 * dpr, 0.8, prng);
+
+      const needles = 7 + Math.floor(prng() * 4);
+      for (let n = 0; n < needles; n++) {
+        const nt = (n + 1) / (needles + 1);
+        const nx = tx + (endX - tx) * nt;
+        const ny = tierY + (endY - tierY) * (nt * nt);
+        const nLen = (7 + 10 * (1 - prog) + prng() * 6) * dpr;
+        const nAngle = (side > 0 ? 0.3 : Math.PI - 0.3) + (prng() - 0.5) * 0.5;
+        const nCol = (prng() > 0.4) ? '#70c1b3' : (prng() > 0.3 ? '#b2dbbf' : '#437568');
+        drawPencilLine(ctx, nx, ny, nx + Math.cos(nAngle) * nLen, ny + Math.sin(nAngle) * nLen, nCol, 1.1 * dpr, 0.75, prng);
+      }
+    }
+  }
+
+  for (let c = 0; c < 6; c++) {
+    const tipH = Ht * (0.92 + c * 0.015);
+    const spread = (prng() - 0.5) * 6 * dpr;
+    const col = (prng() > 0.5) ? '#b2dbbf' : '#f7fff7';
+    drawPencilLine(ctx, tx, ty - Ht * 0.82, tx + spread, ty - tipH, col, 1.1 * dpr, 0.8, prng);
+  }
+}
+
+function buildStaticForest() {
+  staticPrng = createPrng(currentSeed);
+  sceneData.hillFuncs = [];
+  sceneData.gnomes = [];
+  sceneData.trees = [];
+
+  staticCtx.fillStyle = toothPattern;
+  staticCtx.fillRect(0, 0, W, H);
+
+  const moonX = W * (0.24 + staticPrng() * 0.12);
+  const moonY = H * (0.16 + staticPrng() * 0.08);
+  const moonR = Math.min(W, H) * (0.075 + staticPrng() * 0.02);
+
+  for (let r = moonR * 1.1; r <= moonR * 2.5; r += moonR * 0.22) {
+    for (let th = 0; th < Math.PI * 2; th += 0.16) {
+      if (staticPrng() > 0.35) {
+        const x1 = moonX + Math.cos(th) * r;
+        const y1 = moonY + Math.sin(th) * r;
+        const x2 = moonX + Math.cos(th + 0.12) * r;
+        const y2 = moonY + Math.sin(th + 0.12) * r;
+        drawPencilLine(staticCtx, x1, y1, x2, y2, '#ffe66d', 0.9 * dpr, 0.22, staticPrng);
+      }
+    }
+  }
+
+  const segs = 24;
+  for (let i = 0; i <= segs; i++) {
+    const th = -Math.PI * 0.5 + (Math.PI * i) / segs;
+    const x1 = moonX + Math.cos(th) * moonR;
+    const y1 = moonY + Math.sin(th) * moonR;
+    const x2 = moonX + moonR * 0.42 + Math.cos(th) * (moonR * 0.72);
+    const y2 = moonY + Math.sin(th) * (moonR * 0.72);
+    drawPencilLine(staticCtx, x1, y1, x2, y2, '#ffe66d', 1.3 * dpr, 0.85, staticPrng);
+    drawPencilLine(staticCtx, x1 + 1, y1, x2 - 1, y2, '#f7fff7', 1.0 * dpr, 0.7, staticPrng);
+  }
+
+  for (let i = 0; i < 40; i++) {
+    const sx = staticPrng() * W;
+    const sy = staticPrng() * (H * 0.42);
+    const sl = (2.0 + staticPrng() * 3.5) * dpr;
+    const col = (staticPrng() > 0.35) ? '#f7fff7' : '#ffe66d';
+    drawPencilLine(staticCtx, sx - sl, sy, sx + sl, sy, col, 0.9 * dpr, 0.7, staticPrng);
+    drawPencilLine(staticCtx, sx, sy - sl, sx, sy + sl, col, 0.9 * dpr, 0.7, staticPrng);
+  }
+
+  const layers = 5;
+  for (let d = 0; d < layers; d++) {
+    const u = d / (layers - 1);
+    const freq1 = 0.0012 + staticPrng() * 0.0015;
+    const freq2 = 0.0034 + staticPrng() * 0.002;
+    const phase1 = staticPrng() * Math.PI * 2;
+    const phase2 = staticPrng() * Math.PI * 2;
+    const amp1 = H * (0.04 + 0.035 * u);
+    const amp2 = H * (0.02 + 0.025 * u);
+    const baseY = H * (0.42 + 0.52 * ((d + 0.8) / (layers + 0.5)));
+
+    sceneData.hillFuncs.push(function(x) {
+      return baseY + Math.sin(x * freq1 + phase1) * amp1 + Math.cos(x * freq2 + phase2) * amp2;
+    });
+  }
+
+  for (let d = 0; d < layers; d++) {
+    const u = d / (layers - 1);
+    const getGroundY = sceneData.hillFuncs[d];
+
+    const stepX = 8 * dpr;
+    const hillCol = (d === 0) ? '#263b38' : (d < layers - 1 ? '#38534c' : '#4d6d63');
+    for (let x = 0; x <= W; x += stepX) {
+      const gy = getGroundY(x);
+      for (let y = gy; y < gy + (28 + 35 * u) * dpr; y += 4.5 * dpr) {
+        const lean = (staticPrng() - 0.5) * 8 * dpr;
+        drawPencilLine(staticCtx, x, y, x + stepX + lean, y + 2 * dpr, hillCol, 1.2 * dpr, 0.5 + 0.3 * u, staticPrng);
+      }
+    }
+
+    for (let x = 12 * dpr; x < W - 12 * dpr; x += (16 + staticPrng() * 20) * dpr) {
+      const gy = getGroundY(x);
+      const bH = (8 + 14 * u + staticPrng() * 10) * dpr;
+      const bCol = (staticPrng() > 0.35) ? '#b2dbbf' : '#ffe66d';
+      const lean = (staticPrng() - 0.5) * 12 * dpr;
+      drawPencilLine(staticCtx, x, gy, x + lean, gy - bH, bCol, 1.1 * dpr, 0.7, staticPrng);
+    }
+
+    const treeCount = Math.max(2, Math.floor(5 - 2.0 * u + staticPrng() * 2));
+    const treeSpacing = W / (treeCount + 1);
+
+    for (let t = 0; t < treeCount; t++) {
+      const tx = treeSpacing * (t + 1) + (staticPrng() - 0.5) * (treeSpacing * 0.55);
+      const ty = getGroundY(tx);
+      const Ht = H * (0.25 + 0.32 * u) * (0.85 + 0.3 * staticPrng());
+      const Wt = Ht * (0.42 + 0.12 * staticPrng());
+
+      drawOrganicConifer(staticCtx, tx, ty, Ht, Wt, staticPrng);
+
+      sceneData.trees.push({
+        x: tx,
+        y: ty,
+        h: Ht,
+        w: Wt,
+        layer: d
+      });
+
+      if (d === 2 && t === 1) {
+        sceneData.owlPos.x = tx + Wt * 0.32;
+        sceneData.owlPos.y = ty - Ht * 0.44;
+        sceneData.owlPos.scale = (0.7 + 0.3 * u) * dpr;
+      }
+    }
+  }
+
+  const gnomeCount = 3;
+  const gnomeLayers = [layers - 1, layers - 2, layers - 1];
+  for (let g = 0; g < gnomeCount; g++) {
+    const d = gnomeLayers[g];
+    const u = d / (layers - 1);
+    let gx;
+    if (g === 0) {
+      gx = W * (0.34 + staticPrng() * 0.14);
+    } else {
+      gx = W * (0.14 + (g / gnomeCount) * 0.74 + (staticPrng() - 0.5) * 0.12);
+    }
+    const gy = sceneData.hillFuncs[d](gx);
+    const S = (54 + 50 * u) * dpr;
+    const facing = (gx < W * 0.5) ? 1 : -1;
+
+    sceneData.gnomes.push({
+      x: gx,
+      y: gy,
+      s: S,
+      facing: facing,
+      hasLantern: (g === 0 || staticPrng() > 0.25),
+      layer: d,
+      seed: g * 77 + staticPrng() * 100
+    });
+  }
+
+  const fgGround = sceneData.hillFuncs[layers - 1];
+  sceneData.foxPos.x = W * (0.72 + staticPrng() * 0.12);
+  sceneData.foxPos.y = fgGround(sceneData.foxPos.x);
+  sceneData.foxPos.scale = 1.05 * dpr;
+  sceneData.foxPos.facing = -1;
+
+  if (sceneData.owlPos.x === 0) {
+    sceneData.owlPos.x = W * 0.28;
+    sceneData.owlPos.y = H * 0.42;
+    sceneData.owlPos.scale = 0.9 * dpr;
+  }
+
+  initSpores();
+}
+
+function drawFox(ctx, fx, fy, scale, facing, lightFactor, time) {
+  const prng = createPrng(8888 + (window.__frames % 10));
+  const s = scale;
+  const breathe = Math.sin(time * 2.4) * 1.5 * dpr;
+  const tailSwish = Math.sin(time * 2.2) * 14 * dpr * (breeze / 5);
+
+  const vis = Math.min(1.0, 0.28 + lightFactor * 0.72);
+  const coatCol = (vis > 0.6) ? '#ff6b6b' : '#b24c43';
+  const highlightCol = (vis > 0.5) ? '#ffe66d' : '#f3c68f';
+  const creamCol = '#fdf6e2';
+  const darkCol = '#1f2429';
+
+  ctx.save();
+  ctx.translate(fx, fy);
+  ctx.scale(facing, 1);
+
+  const hipX = -26 * s;
+  const hipY = -14 * s + breathe * 0.4;
+  const shX = 2 * s;
+  const shY = -16 * s + breathe;
+  const headX = 18 * s;
+  const headY = -22 * s + breathe * 1.2;
+
+  drawPencilLine(ctx, hipX + 4 * s, hipY + 8 * s, hipX + 8 * s, 0, coatCol, 2.0 * s, vis, prng);
+  drawPencilLine(ctx, shX + 2 * s, shY + 6 * s, shX + 4 * s, 0, coatCol, 2.0 * s, vis, prng);
+  drawPencilLine(ctx, hipX + 8 * s, -4 * s, hipX + 9 * s, 0, darkCol, 2.2 * s, vis, prng);
+  drawPencilLine(ctx, shX + 4 * s, -4 * s, shX + 5 * s, 0, darkCol, 2.2 * s, vis, prng);
+
+  for (let i = 0; i < 7; i++) {
+    const u = i / 6;
+    const bx = hipX + (shX - hipX) * u;
+    const by = hipY + (shY - hipY) * u - Math.sin(u * Math.PI) * 4 * s;
+    drawPencilLine(ctx, bx, by, bx, by + 12 * s, coatCol, 2.2 * s, vis * 0.9, prng);
+    if (vis > 0.4) {
+      drawPencilLine(ctx, bx, by, bx, by + 4 * s, highlightCol, 1.4 * s, vis * 0.7, prng);
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
+    drawPencilLine(ctx, shX + 4 * s, shY + 2 * s + i * 2 * s, headX - 2 * s, headY + 6 * s + i * 2 * s, creamCol, 1.6 * s, vis * 0.85, prng);
+  }
+
+  drawPencilLine(ctx, headX - 6 * s, headY, headX + 10 * s, headY + 3 * s, coatCol, 2.4 * s, vis, prng);
+  drawPencilLine(ctx, headX + 4 * s, headY + 4 * s, headX + 11 * s, headY + 3.5 * s, creamCol, 2.0 * s, vis, prng);
+  drawPencilLine(ctx, headX + 10 * s, headY + 3 * s, headX + 12 * s, headY + 3 * s, darkCol, 2.2 * s, vis, prng);
+
+  drawPencilLine(ctx, headX - 2 * s, headY - 2 * s, headX - 1 * s, headY - 14 * s, coatCol, 1.8 * s, vis, prng);
+  drawPencilLine(ctx, headX + 2 * s, headY - 1 * s, headX + 4 * s, headY - 13 * s, coatCol, 1.8 * s, vis, prng);
+  drawPencilLine(ctx, headX - 1 * s, headY - 14 * s, headX + 4 * s, headY - 13 * s, darkCol, 1.5 * s, vis, prng);
+  drawPencilLine(ctx, headX + 0.5 * s, headY - 3 * s, headX + 1.5 * s, headY - 10 * s, creamCol, 1.4 * s, vis * 0.9, prng);
+
+  const isBlink = (Math.sin(time * 1.1) > 0.94);
+  if (!isBlink) {
+    const eyeGlow = Math.min(1.0, 0.45 + lightFactor * 0.55);
+    drawPencilLine(ctx, headX + 3 * s, headY, headX + 5.5 * s, headY - 0.5 * s, '#ffe66d', 1.8 * s, eyeGlow, prng);
+    drawPencilLine(ctx, headX + 4 * s, headY - 0.8 * s, headX + 4.2 * s, headY + 0.2 * s, darkCol, 1.2 * s, eyeGlow, prng);
+  } else {
+    drawPencilLine(ctx, headX + 3 * s, headY, headX + 5.5 * s, headY, darkCol, 1.4 * s, vis, prng);
+  }
+
+  const tailRootX = hipX;
+  const tailRootY = hipY + 2 * s;
+  const tailMidX = hipX - 18 * s + tailSwish * 0.4;
+  const tailMidY = hipY - 6 * s;
+  const tailEndX = hipX - 32 * s + tailSwish;
+  const tailEndY = hipY + 8 * s;
+
+  for (let t = 0; t <= 12; t++) {
+    const tt = t / 12;
+    const tx = (1 - tt) * (1 - tt) * tailRootX + 2 * (1 - tt) * tt * tailMidX + tt * tt * tailEndX;
+    const ty = (1 - tt) * (1 - tt) * tailRootY + 2 * (1 - tt) * tt * tailMidY + tt * tt * tailEndY;
+    const tCol = (tt > 0.72) ? creamCol : ((vis > 0.5 && tt < 0.6) ? highlightCol : coatCol);
+    const tWidth = (3.0 + Math.sin(tt * Math.PI) * 7.0) * s;
+    drawPencilLine(ctx, tx, ty - tWidth * 0.5, tx, ty + tWidth * 0.5, tCol, 1.6 * s, vis * 0.9, prng);
+  }
+
+  ctx.restore();
+}
+
+function drawOwl(ctx, ox, oy, scale, facing, lightFactor, time) {
+  const prng = createPrng(7777 + (window.__frames % 10));
+  const s = scale;
+  const vis = Math.min(1.0, 0.32 + lightFactor * 0.68);
+  const headTurn = Math.sin(time * 0.9) * 0.3;
+  const isBlink = (Math.sin(time * 0.65 + 1.2) > 0.93);
+
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(facing, 1);
+
+  drawPencilLine(ctx, -10 * s, 4 * s, 10 * s, 4 * s, '#2b333a', 2.8 * s, 0.9, prng);
+  drawPencilLine(ctx, -6 * s, 3 * s, -4 * s, 5 * s, '#ffe66d', 1.8 * s, vis, prng);
+  drawPencilLine(ctx, 4 * s, 3 * s, 6 * s, 5 * s, '#ffe66d', 1.8 * s, vis, prng);
+
+  for (let y = -22 * s; y <= 2 * s; y += 2.5 * s) {
+    const prog = (y + 22 * s) / (24 * s);
+    const w = (9 + Math.sin(prog * Math.PI) * 7) * s;
+    const bCol = (prog > 0.3 && prog < 0.8) ? '#b2dbbf' : '#303b44';
+    drawPencilLine(ctx, -w, y, w, y, bCol, 2.0 * s, vis * 0.85, prng);
+    if (vis > 0.4 && prog > 0.3 && prog < 0.8) {
+      drawPencilLine(ctx, -w * 0.4, y, w * 0.4, y, '#fdf6e2', 1.4 * s, vis * 0.7, prng);
+    }
+  }
+
+  ctx.save();
+  ctx.translate(0, -20 * s);
+  ctx.rotate(headTurn);
+
+  for (let r = 0; r <= 8 * s; r += 2.2 * s) {
+    drawPencilLine(ctx, -8 * s + r * 0.2, -r, 8 * s - r * 0.2, -r, '#3d4852', 2.0 * s, vis, prng);
+  }
+
+  drawPencilLine(ctx, -6 * s, -10 * s, -8 * s, -18 * s, '#2b333a', 1.8 * s, vis, prng);
+  drawPencilLine(ctx, 6 * s, -10 * s, 8 * s, -18 * s, '#2b333a', 1.8 * s, vis, prng);
+
+  drawPencilLine(ctx, -4.5 * s, -4 * s, -4.5 * s, -4 * s, '#fdf6e2', 6.0 * s, vis * 0.9, prng);
+  drawPencilLine(ctx, 4.5 * s, -4 * s, 4.5 * s, -4 * s, '#fdf6e2', 6.0 * s, vis * 0.9, prng);
+
+  if (!isBlink) {
+    const eyeIntensity = Math.min(1.0, 0.5 + lightFactor * 0.5);
+    drawPencilLine(ctx, -4.5 * s, -4 * s, -4.5 * s, -4 * s, '#ffe66d', 4.2 * s, eyeIntensity, prng);
+    drawPencilLine(ctx, 4.5 * s, -4 * s, 4.5 * s, -4 * s, '#ffe66d', 4.2 * s, eyeIntensity, prng);
+    drawPencilLine(ctx, -4.5 * s, -4 * s, -4.5 * s, -4 * s, '#14181b', 2.0 * s, eyeIntensity, prng);
+    drawPencilLine(ctx, 4.5 * s, -4 * s, 4.5 * s, -4 * s, '#14181b', 2.0 * s, eyeIntensity, prng);
+  } else {
+    drawPencilLine(ctx, -7 * s, -4 * s, -2 * s, -4 * s, '#14181b', 1.8 * s, vis, prng);
+    drawPencilLine(ctx, 2 * s, -4 * s, 7 * s, -4 * s, '#14181b', 1.8 * s, vis, prng);
+  }
+
+  drawPencilLine(ctx, 0, -3 * s, 0, -0.5 * s, '#ffe66d', 2.2 * s, vis, prng);
+
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawGnome(ctx, gnome, time) {
+  const prng = createPrng(gnome.seed + (window.__frames % 10));
+  const gx = gnome.x;
+  const gy = gnome.y;
+  const S = gnome.s;
+  const facing = gnome.facing;
+
+  const breathe = Math.sin(time * 2.2 + gnome.seed) * 1.2 * dpr;
+
+  const bootPoly = [
+    [gx - S * 0.16, gy],
+    [gx - S * 0.16, gy - S * 0.08],
+    [gx + S * 0.16, gy - S * 0.08],
+    [gx + S * 0.16, gy]
+  ];
+  for (let y = gy - S * 0.08; y <= gy; y += 2.5 * dpr) {
+    drawPencilLine(ctx, gx - S * 0.16, y, gx + S * 0.16, y, '#403328', 1.4 * dpr, 0.85, prng);
+  }
+
+  const bodyTop = gy - S * 0.40 + breathe;
+  const bodyBottom = gy - S * 0.08;
+  for (let y = bodyTop; y <= bodyBottom; y += 3.0 * dpr) {
+    const prog = (y - bodyTop) / (bodyBottom - bodyTop);
+    const hw = (S * 0.16 + S * 0.08 * prog);
+    drawPencilLine(ctx, gx - hw, y, gx + hw, y, '#457b70', 1.5 * dpr, 0.85, prng);
+  }
+
+  const beltY = gy - S * 0.15 + breathe;
+  drawPencilLine(ctx, gx - S * 0.22, beltY, gx + S * 0.22, beltY, '#ffe66d', 2.2 * dpr, 0.9, prng);
+
+  const beardTop = gy - S * 0.42 + breathe;
+  const beardBottom = gy - S * 0.04 + breathe * 0.5;
+  for (let y = beardTop; y <= beardBottom; y += 2.8 * dpr) {
+    const prog = (y - beardTop) / (beardBottom - beardTop);
+    const bw = S * (0.22 - 0.14 * prog * prog);
+    const sway = Math.sin(time * 2.5 + prog * 2) * (3 * dpr * (breeze / 5));
+    drawPencilLine(ctx, gx - bw + sway, y, gx + bw + sway, y, '#f7fff7', 1.4 * dpr, 0.92, prng);
+    if (prog > 0.4) {
+      drawPencilLine(ctx, gx - bw * 0.5 + sway, y, gx + bw * 0.5 + sway, y, '#b2dbbf', 1.1 * dpr, 0.45, prng);
+    }
+  }
+
+  const noseY = gy - S * 0.42 + breathe;
+  drawPencilLine(ctx, gx - S * 0.07, noseY, gx + S * 0.07, noseY, '#f3c68f', 3.4 * dpr, 0.95, prng);
+
+  const hatBaseY = gy - S * 0.44 + breathe;
+  const hatH = S * 0.72;
+  const hatBend = (Math.sin(time * 1.8 + gnome.seed) * 8 + facing * 12) * dpr;
+  for (let y = hatBaseY; y >= hatBaseY - hatH; y -= 2.6 * dpr) {
+    const prog = (hatBaseY - y) / hatH;
+    const hw = S * 0.22 * (1.0 - prog);
+    const hx = gx + hatBend * (prog * prog);
+    drawPencilLine(ctx, hx - hw, y, hx + hw, y, '#ff6b6b', 1.6 * dpr, 0.95, prng);
+    if (prog < 0.6) {
+      drawPencilLine(ctx, hx - hw * 0.5, y, hx + hw * 0.5, y, '#ffe66d', 1.2 * dpr, 0.55, prng);
+    }
+  }
+  drawPencilLine(ctx, gx - S * 0.24, hatBaseY, gx + S * 0.24, hatBaseY, '#ffe66d', 2.4 * dpr, 0.95, prng);
+
+  let lanternPos = null;
+  if (gnome.hasLantern) {
+    const handX = gx + S * 0.28 * facing;
+    const handY = gy - S * 0.32 + breathe;
+
+    const bFactor = breeze / 5.0;
+    const swingAng = Math.sin(time * 2.8 + gnome.seed) * (0.24 * bFactor) + (facing * 0.08);
+    const chainLen = S * 0.32;
+    const lx = handX + Math.sin(swingAng) * chainLen;
+    const ly = handY + Math.cos(swingAng) * chainLen;
+
+    drawPencilLine(ctx, handX, handY, lx, ly, '#ffe66d', 1.2 * dpr, 0.75, prng);
+
+    const lW = S * 0.16;
+    const lH = S * 0.24;
+
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(swingAng * 0.7);
+
+    drawPencilLine(ctx, -lW * 0.55, -lH * 0.5, lW * 0.55, -lH * 0.5, '#f3c68f', 1.8 * dpr, 0.9, prng);
+    drawPencilLine(ctx, -lW * 0.5, lH * 0.5, lW * 0.5, lH * 0.5, '#f3c68f', 1.8 * dpr, 0.9, prng);
+
+    drawPencilLine(ctx, -lW * 0.45, -lH * 0.5, -lW * 0.45, lH * 0.5, '#4a3d32', 1.4 * dpr, 0.85, prng);
+    drawPencilLine(ctx, lW * 0.45, -lH * 0.5, lW * 0.45, lH * 0.5, '#4a3d32', 1.4 * dpr, 0.85, prng);
+
+    const coreFlicker = 1.0 + 0.18 * Math.sin(time * 16.0 + gnome.seed) + 0.08 * Math.sin(time * 33.0);
+    const coreR = (lW * 0.36) * coreFlicker;
+    drawPencilLine(ctx, -coreR, 0, coreR, 0, '#fff8db', 3.0 * dpr, 0.95, prng);
+    drawPencilLine(ctx, 0, -coreR, 0, coreR, '#ffe66d', 3.0 * dpr, 0.95, prng);
+
+    ctx.restore();
+
+    lanternPos = { x: lx, y: ly, flicker: coreFlicker };
+  }
+
+  return lanternPos;
+}
+
+function drawLanternWavesAndRays(ctx, lantern, time) {
+  const prng = createPrng(6666 + (window.__frames % 12));
+  const lx = lantern.x;
+  const ly = lantern.y;
+  const flicker = lantern.flicker;
+  const rFactor = radiance / 6.0;
+
+  const numWaves = 6;
+  const maxWaveR = (190 + 90 * rFactor) * dpr;
+
+  for (let w = 0; w < numWaves; w++) {
+    const wavePhase = (time * (0.8 + 0.2 * (breeze / 5)) + w * (1.0 / numWaves)) % 1.0;
+    const wr = wavePhase * maxWaveR;
+    const waveAlpha = Math.sin(wavePhase * Math.PI) * 0.65 * flicker * Math.min(1.0, rFactor);
+
+    if (waveAlpha > 0.04) {
+      const segs = 32;
+      for (let s = 0; s < segs; s++) {
+        if ((s + w) % 3 !== 0) {
+          const a1 = (s / segs) * Math.PI * 2;
+          const a2 = ((s + 0.65) / segs) * Math.PI * 2;
+          const jit1 = (prng() - 0.5) * 2.5 * dpr;
+          const jit2 = (prng() - 0.5) * 2.5 * dpr;
+          const x1 = lx + Math.cos(a1) * (wr + jit1);
+          const y1 = ly + Math.sin(a1) * (wr + jit1);
+          const x2 = lx + Math.cos(a2) * (wr + jit2);
+          const y2 = ly + Math.sin(a2) * (wr + jit2);
+          drawPencilLine(ctx, x1, y1, x2, y2, '#ffe66d', 1.2 * dpr, waveAlpha, prng);
+
+          if (s % 4 === 0) {
+            const rx2 = lx + Math.cos(a1) * (wr + jit1 + 8 * dpr);
+            const ry2 = ly + Math.sin(a1) * (wr + jit1 + 8 * dpr);
+            drawPencilLine(ctx, x1, y1, rx2, ry2, '#f7fff7', 1.0 * dpr, waveAlpha * 0.7, prng);
+          }
+        }
+      }
+    }
+  }
+
+  const rayCount = 14;
+  for (let i = 0; i < rayCount; i++) {
+    const baseA = (i / rayCount) * Math.PI * 2;
+    const rayAngle = baseA + Math.sin(time * 2.2 + i * 2.4) * (0.12 * (breeze / 5));
+    const rayDist = (120 + 80 * Math.sin(time * 1.8 + i * 3.1)) * dpr * rFactor;
+    const rayAlpha = (0.18 + 0.14 * Math.sin(time * 3.5 + i)) * flicker;
+
+    const rx1 = lx + Math.cos(rayAngle) * (14 * dpr);
+    const ry1 = ly + Math.sin(rayAngle) * (14 * dpr);
+    const rx2 = lx + Math.cos(rayAngle) * rayDist;
+    const ry2 = ly + Math.sin(rayAngle) * rayDist;
+    drawPencilLine(ctx, rx1, ry1, rx2, ry2, '#ffe66d', 1.3 * dpr, rayAlpha, prng);
+  }
+}
+
+function drawIlluminatedTrunkBark(ctx, lantern, time) {
+  const prng = createPrng(5555 + (window.__frames % 10));
+  const lx = lantern.x;
+  const ly = lantern.y;
+  const rFactor = radiance / 6.0;
+  const maxDist = (280 * rFactor) * dpr;
+
+  for (let i = 0; i < sceneData.trees.length; i++) {
+    const tr = sceneData.trees[i];
+    const dx = tr.x - lx;
+    const dy = (tr.y - tr.h * 0.4) - ly;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < maxDist) {
+      const prox = 1.0 - dist / maxDist;
+      const intensity = prox * prox * lantern.flicker * 0.85;
+      const side = (dx > 0) ? -1 : 1;
+      const trunkW = tr.h * 0.07;
+      const startX = tr.x + side * (trunkW * 0.45);
+
+      const strokeLines = 8;
+      for (let s = 0; s < strokeLines; s++) {
+        const prog = s / strokeLines;
+        const sy1 = tr.y - tr.h * (0.05 + 0.6 * prog);
+        const sy2 = sy1 - tr.h * 0.12;
+        const jx = (prng() - 0.5) * 1.5 * dpr;
+        drawPencilLine(ctx, startX + jx, sy1, startX + jx * 0.8, sy2, '#ffe66d', 1.4 * dpr, intensity, prng);
+        if (intensity > 0.35) {
+          drawPencilLine(ctx, startX + side * 2 * dpr, sy1, startX + side * 2 * dpr, sy2, '#f7fff7', 1.0 * dpr, intensity * 0.6, prng);
+        }
+      }
+    }
+  }
+}
+
+function updateAndDrawSpores(ctx, lanterns, time) {
+  const prng = createPrng(4444 + (window.__frames % 10));
+  const bSpeed = breeze / 5.0;
+
+  for (let i = 0; i < sporeParticles.length; i++) {
+    const p = sporeParticles[i];
+    p.x += p.baseSpeed * (1.2 + bSpeed * 1.4) * dpr;
+    if (p.x > W + 20) p.x = -20;
+
+    const swayY = Math.sin(time * 2.0 + p.phaseY) * (0.8 * dpr);
+    const currY = p.y + swayY;
+
+    let totalLight = 0.15;
+    for (let l = 0; l < lanterns.length; l++) {
+      const dist = Math.hypot(p.x - lanterns[l].x, currY - lanterns[l].y);
+      const maxR = (220 * (radiance / 6.0)) * dpr;
+      if (dist < maxR) {
+        totalLight += (1.0 - dist / maxR) * lanterns[l].flicker * 0.85;
+      }
+    }
+    totalLight = Math.min(1.0, totalLight);
+
+    const sSize = p.size * (0.8 + 0.4 * Math.sin(time * 3.0 + p.phase));
+    drawPencilLine(ctx, p.x - sSize, currY, p.x + sSize, currY, p.color, 1.1 * dpr, totalLight, prng);
+    drawPencilLine(ctx, p.x, currY - sSize, p.x, currY + sSize, p.color, 1.1 * dpr, totalLight, prng);
+  }
+}
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const winW = window.innerWidth;
+  const winH = window.innerHeight;
+
+  W = Math.floor(winW * dpr);
+  H = Math.floor(winH * dpr);
+
+  mainCanvas.width = W;
+  mainCanvas.height = H;
+  mainCanvas.style.width = winW + 'px';
+  mainCanvas.style.height = winH + 'px';
+
+  staticCanvas.width = W;
+  staticCanvas.height = H;
+
+  mainCtx.setTransform(1, 0, 0, 1, 0, 0);
+  staticCtx.setTransform(1, 0, 0, 1, 0, 0);
+
+  initToothPattern();
+  buildStaticForest();
+}
+
+window.addEventListener('resize', resize);
+
+function onControlUpdate() {
+  radiance = parseInt(sliderRadiance.value, 10);
+  breeze = parseInt(sliderBreeze.value, 10);
+  life = parseInt(sliderLife.value, 10);
+
+  valRadiance.textContent = radiance;
+  valBreeze.textContent = breeze;
+  valLife.textContent = life;
+}
+
+sliderRadiance.addEventListener('input', onControlUpdate);
+sliderBreeze.addEventListener('input', onControlUpdate);
+sliderLife.addEventListener('input', onControlUpdate);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    overlay.classList.toggle('hidden');
+  }
+});
+
+let pointerX = -1000;
+let pointerY = -1000;
+window.addEventListener('pointermove', (e) => {
+  pointerX = e.clientX * dpr;
+  pointerY = e.clientY * dpr;
+});
+
+resize();
+
+function animate() {
+  window.__frames++;
+
+  const time = window.__frames * 0.025;
+
+  mainCtx.drawImage(staticCanvas, 0, 0);
+
+  const activeLanterns = [];
+  for (let g = 0; g < sceneData.gnomes.length; g++) {
+    const gnome = sceneData.gnomes[g];
+    const lPos = drawGnome(mainCtx, gnome, time);
+    if (lPos) {
+      activeLanterns.push(lPos);
+    }
+  }
+
+  for (let l = 0; l < activeLanterns.length; l++) {
+    drawLanternWavesAndRays(mainCtx, activeLanterns[l], time);
+    drawIlluminatedTrunkBark(mainCtx, activeLanterns[l], time);
+  }
+
+  let foxLight = 0;
+  for (let l = 0; l < activeLanterns.length; l++) {
+    const dist = Math.hypot(sceneData.foxPos.x - activeLanterns[l].x, sceneData.foxPos.y - activeLanterns[l].y);
+    const maxR = (320 * (radiance / 6.0)) * dpr;
+    if (dist < maxR) {
+      foxLight += (1.0 - dist / maxR) * activeLanterns[l].flicker;
+    }
+  }
+  foxLight *= (life / 3.0);
+  drawFox(mainCtx, sceneData.foxPos.x, sceneData.foxPos.y, sceneData.foxPos.scale, sceneData.foxPos.facing, foxLight, time);
+
+  let owlLight = 0;
+  for (let l = 0; l < activeLanterns.length; l++) {
+    const dist = Math.hypot(sceneData.owlPos.x - activeLanterns[l].x, sceneData.owlPos.y - activeLanterns[l].y);
+    const maxR = (400 * (radiance / 6.0)) * dpr;
+    if (dist < maxR) {
+      owlLight += (1.0 - dist / maxR) * activeLanterns[l].flicker;
+    }
+  }
+  owlLight *= (life / 3.0);
+  drawOwl(mainCtx, sceneData.owlPos.x, sceneData.owlPos.y, sceneData.owlPos.scale, sceneData.owlPos.facing, owlLight, time);
+
+  updateAndDrawSpores(mainCtx, activeLanterns, time);
+
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

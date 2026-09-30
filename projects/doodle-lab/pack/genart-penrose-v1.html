@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pentagrid zellige</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Exact Penrose rhomb tiling via de Bruijn's pentagrid.
+  Five families of parallel lines (directions 72 deg apart, offsets gamma_j
+  summing to zero). Every intersection of two lines becomes one rhomb, whose
+  vertices are sum_j K_j e_j, where K_j is the strip index of the point in
+  family j. Shifting gamma perpendicular to the plane (a "phason") re-flips
+  tiles locally while the result stays a valid Penrose tiling.
+
+  "Hidden structure" coloring maps each tile center to perpendicular space
+  (sum_j K_j e'_j with e'_j rotated by 2*j*72 deg). Tiles with the same local
+  neighborhood land near each other there, so they receive similar glazes.
+*/
+:root {
+  --panel-bg: rgba(24, 30, 52, 0.84);
+  --panel-fg: #f0ebe0;
+  --panel-muted: #b9b3a6;
+  --accent: #e2b04a;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(24, 30, 52, 0.84); } }
+:root[data-theme="dark"] { --panel-bg: rgba(24, 30, 52, 0.84); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+html, body { height: 100%; margin: 0; }
+body { background: #cfc8b8; overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.panel {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(290px, calc(100vw - 24px)); background: var(--panel-bg); color: var(--panel-fg);
+  border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4;
+}
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary .count { font-weight: 400; color: var(--panel-muted); font-variant-numeric: tabular-nums; }
+.body { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 76px 1fr 40px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+select, button {
+  font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+select { flex: 1; }
+select option { color: #1b1b1b; }
+button[aria-pressed="true"] { background: rgba(226,176,74,0.28); border-color: var(--accent); }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+</style>
+<script src="../tools/lab-shim.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" open>
+  <summary><span>Controls</span><span class="count" id="count"></span></summary>
+  <div class="body">
+    <div class="row">
+      <select id="mode" aria-label="Color by">
+        <option value="perp">Color by hidden structure</option>
+        <option value="shape">Color by shape</option>
+        <option value="orient">Color by orientation</option>
+      </select>
+    </div>
+    <div class="row">
+      <select id="glaze" aria-label="Glaze set">
+        <option value="0">Zellige glazes</option>
+        <option value="1">Delft</option>
+        <option value="2">Kiln earth</option>
+      </select>
+    </div>
+    <label>Phason x <input type="range" id="px" min="-1" max="1" step="0.001" value="0"><output id="pxo"></output></label>
+    <label>Phason y <input type="range" id="py" min="-1" max="1" step="0.001" value="0"><output id="pyo"></output></label>
+    <label>Tile size <input type="range" id="size" min="10" max="90" step="1" value="34"><output id="sizeo"></output></label>
+    <div class="row">
+      <button id="drift" aria-pressed="true">Drift</button>
+      <button id="reseed">New offsets</button>
+    </div>
+    <div class="hint">Drag the phason sliders slowly and watch individual tiles flip. Drag the canvas to pan.</div>
+  </div>
+</details>
+<script>
+(() => {
+  const TAU = Math.PI * 2;
+  const E = [], EP = [];                     // grid directions and perpendicular-space directions
+  for (let j = 0; j < 5; j++) {
+    E.push([Math.cos(TAU * j / 5), Math.sin(TAU * j / 5)]);
+    EP.push([Math.cos(TAU * 2 * j / 5), Math.sin(TAU * 2 * j / 5)]);
+  }
+  const GLAZES = [
+    { tiles: ["#1f3e8c", "#2f8f8a", "#c8952e", "#5a3426", "#ece5d3"], grout: "#cfc8b8" },
+    { tiles: ["#1c3f94", "#3d67b8", "#f3f1ea", "#8fb0d9", "#23305e"], grout: "#e9e6de" },
+    { tiles: ["#9a4a2c", "#c9a36a", "#4b5a3a", "#e4d6bb", "#2e2622"], grout: "#b8ab94" },
+  ];
+
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const $ = (id) => document.getElementById(id);
+  let W, H, dpr;
+  let base = [], center = [0, 0];            // base offsets (sum 0) and view center in tile units
+  let drift = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let phase = 0, needsDraw = true, glazeRGB = [];
+
+  function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+  function setGlaze() { glazeRGB = GLAZES[+$("glaze").value].tiles.map(hexToRgb); document.body.style.background = GLAZES[+$("glaze").value].grout; needsDraw = true; }
+
+  // Random generic offsets with sum exactly zero (Penrose condition)
+  function reseed() {
+    base = Array.from({ length: 5 }, () => Math.random() - 0.5);
+    const m = base.reduce((a, b) => a + b, 0) / 5;
+    base = base.map(g => g - m);
+    needsDraw = true;
+  }
+
+  // Offsets = base + phason shift along perpendicular-space directions (keeps the sum at zero)
+  function gammas() {
+    const ux = +$("px").value + (drift ? 0.35 * Math.cos(phase) : 0);
+    const uy = +$("py").value + (drift ? 0.35 * Math.sin(phase * 0.7) : 0);
+    return base.map((g, j) => g + ux * EP[j][0] + uy * EP[j][1]);
+  }
+
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = canvas.width = Math.floor(innerWidth * dpr);
+    H = canvas.height = Math.floor(innerHeight * dpr);
+    needsDraw = true;
+  }
+
+  // Build every rhomb whose intersection lies within the view
+  function buildTiles(g, L) {
+    const tiles = [];
+    const viewR = Math.hypot(W, H) / 2 / L + 2;   // view radius in tile units
+    const pR = viewR / 2.5 + 1.5;                  // tiling vertices ~ 2.5 * grid point
+    const pc = [center[0] / 2.5, center[1] / 2.5];
+    for (let r = 0; r < 4; r++) for (let s = r + 1; s < 5; s++) {
+      const er = E[r], es = E[s];
+      const det = er[0] * es[1] - er[1] * es[0];
+      const cr = pc[0] * er[0] + pc[1] * er[1] - g[r];
+      const cs = pc[0] * es[0] + pc[1] * es[1] - g[s];
+      const n = Math.ceil(pR) + 1;
+      for (let kr = Math.floor(cr - n); kr <= Math.ceil(cr + n); kr++) {
+        for (let ks = Math.floor(cs - n); ks <= Math.ceil(cs + n); ks++) {
+          // Solve p.e_r = kr + g_r, p.e_s = ks + g_s
+          const a = kr + g[r], b = ks + g[s];
+          const px = (a * es[1] - b * er[1]) / det, py = (b * er[0] - a * es[0]) / det;
+          if ((px - pc[0]) ** 2 + (py - pc[1]) ** 2 > pR * pR) continue;
+          const K = [0, 0, 0, 0, 0];
+          for (let j = 0; j < 5; j++) K[j] = Math.ceil(px * E[j][0] + py * E[j][1] - g[j]);
+          K[r] = kr; K[s] = ks;
+          // Vertex for the corner region: add 0/1 to the r and s strip indices
+          let vx = 0, vy = 0, qx = 0, qy = 0;
+          for (let j = 0; j < 5; j++) { vx += K[j] * E[j][0]; vy += K[j] * E[j][1]; qx += K[j] * EP[j][0]; qy += K[j] * EP[j][1]; }
+          const verts = [
+            [vx, vy], [vx + er[0], vy + er[1]],
+            [vx + er[0] + es[0], vy + er[1] + es[1]], [vx + es[0], vy + es[1]],
+          ];
+          // Perpendicular-space position of the tile center
+          qx += 0.5 * (EP[r][0] + EP[s][0]); qy += 0.5 * (EP[r][1] + EP[s][1]);
+          const d = s - r;
+          tiles.push({ verts, thick: d === 1 || d === 4, pair: r * 5 + s, qx, qy, h: (K[0] * 73 + K[1] * 151 + K[2] * 37 + K[3] * 211 + K[4] * 97 + r * 13 + s * 7) });
+        }
+      }
+    }
+    return tiles;
+  }
+
+  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+
+  function tileColor(t, mode, qmax) {
+    let c;
+    if (mode === "shape") c = t.thick ? glazeRGB[0] : glazeRGB[2];
+    else if (mode === "orient") c = glazeRGB[[0, 1, 2, 3, 4, 1, 3, 0, 2, 4][[1, 2, 3, 4, 7, 8, 9, 13, 14, 19].indexOf(t.pair)]];
+    else {
+      // Angle in perpendicular space -> cyclic walk through the glazes; radius -> toward the lightest glaze
+      const ang = (Math.atan2(t.qy, t.qx) / TAU + 1) % 1;
+      const f = ang * 4, i = Math.floor(f), u = f - i;
+      c = mix(glazeRGB[i % 4], glazeRGB[(i + 1) % 4], u * u * (3 - 2 * u));
+      const rad = Math.min(1, Math.hypot(t.qx, t.qy) / qmax);
+      c = mix(glazeRGB[4], c, 0.25 + 0.75 * rad);
+    }
+    // Handmade glaze variation: small per-tile lightness jitter from a hash
+    const j = (((t.h * 2654435761) >>> 0) % 1000) / 1000 * 0.12 - 0.06;
+    return `rgb(${(c[0] * (1 + j)) | 0},${(c[1] * (1 + j)) | 0},${(c[2] * (1 + j)) | 0})`;
+  }
+
+  function draw() {
+    const L = +$("size").value * dpr;
+    const g = gammas();
+    const tiles = buildTiles(g, L);
+    const mode = $("mode").value;
+    let qmax = 0;
+    for (const t of tiles) qmax = Math.max(qmax, Math.hypot(t.qx, t.qy));
+    ctx.fillStyle = GLAZES[+$("glaze").value].grout;
+    ctx.fillRect(0, 0, W, H);
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1, L * 0.07);
+    ctx.strokeStyle = GLAZES[+$("glaze").value].grout;
+    const ox = W / 2 - center[0] * L, oy = H / 2 - center[1] * L;
+    let visible = 0;
+    for (const t of tiles) {
+      const v = t.verts;
+      const x0 = ox + v[0][0] * L, y0 = oy + v[0][1] * L;
+      if (x0 < -2 * L || x0 > W + 2 * L || y0 < -2 * L || y0 > H + 2 * L) continue;
+      visible++;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      for (let k = 1; k < 4; k++) ctx.lineTo(ox + v[k][0] * L, oy + v[k][1] * L);
+      ctx.closePath();
+      ctx.fillStyle = tileColor(t, mode, qmax);
+      ctx.fill();
+      ctx.stroke();
+    }
+    $("count").textContent = `${visible.toLocaleString()} tiles`;
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (drift) { phase += dt * 0.12; center[0] += dt * 0.35; center[1] += dt * 0.12; needsDraw = true; }
+    if (needsDraw) { draw(); needsDraw = false; }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- UI ----------
+  function syncOutputs() {
+    $("pxo").textContent = (+$("px").value).toFixed(2);
+    $("pyo").textContent = (+$("py").value).toFixed(2);
+    $("sizeo").textContent = $("size").value;
+  }
+  ["px", "py", "size"].forEach(id => $(id).addEventListener("input", () => { syncOutputs(); needsDraw = true; }));
+  $("mode").onchange = () => { needsDraw = true; };
+  $("glaze").onchange = setGlaze;
+  $("drift").onclick = () => { drift = !drift; $("drift").setAttribute("aria-pressed", drift); needsDraw = true; };
+  $("drift").setAttribute("aria-pressed", drift);
+  $("reseed").onclick = reseed;
+  addEventListener("keydown", (e) => { if (e.code === "Space" && e.target.tagName !== "SELECT") { e.preventDefault(); reseed(); } });
+
+  // Drag to pan
+  let dragging = null;
+  canvas.addEventListener("pointerdown", (e) => { dragging = [e.clientX, e.clientY]; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const L = +$("size").value;
+    center[0] -= (e.clientX - dragging[0]) / L; center[1] -= (e.clientY - dragging[1]) / L;
+    dragging = [e.clientX, e.clientY]; needsDraw = true;
+  });
+  canvas.addEventListener("pointerup", () => { dragging = null; });
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+
+  syncOutputs(); reseed(); setGlaze(); resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+<!-- Clip recorder: captures the canvas (not the controls) via MediaRecorder,
+     then offers the file through the page's downloads capability. -->
+<style>
+.rec { position: fixed; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 10;
+  font: 600 13px "Instrument Sans", system-ui, sans-serif; color: #f3f0ea; background: rgba(20,20,24,0.78);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 18px; padding: 7px 14px; cursor: pointer;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; }
+.rec.on { background: rgba(170, 30, 40, 0.88); }
+.rec:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+</style>
+<button class="rec" id="recBtn" aria-live="polite">Record clip</button>
+<script>
+(() => {
+  const btn = document.getElementById("recBtn");
+  const canvas = document.querySelector("canvas");
+  const LIMIT = 30;                                   // seconds; auto-stops here
+  if (!canvas || !canvas.captureStream || !window.MediaRecorder) return;
+  const TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = TYPES.find(t => MediaRecorder.isTypeSupported(t));
+  if (!mime) return;
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  let downloads = null, rec = null, chunks = [], t0 = 0, tick = null;
+
+  (async () => {
+    if (!window.claude || !window.claude.use) return;
+    downloads = await window.claude.use("downloads");
+    if (downloads) btn.style.display = "block";
+  })();
+
+  function stop() { if (rec && rec.state === "recording") rec.stop(); }
+  btn.onclick = () => {
+    if (rec && rec.state === "recording") return stop();
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 12e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(tick); btn.classList.remove("on"); btn.textContent = "Saving...";
+      const blob = new Blob(chunks, { type: mime });
+      const slug = document.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      try { await downloads.save({ filename: `${slug}-${stamp}.${ext}`, data: blob }); btn.textContent = "Saved"; }
+      catch (e) { btn.textContent = e && e.code === "declined" ? "Not saved" : "Save failed"; }
+      setTimeout(() => { btn.textContent = "Record clip"; }, 2000);
+    };
+    rec.start(250);
+    t0 = performance.now(); btn.classList.add("on"); btn.textContent = "Stop  0 s";
+    tick = setInterval(() => {
+      const s = Math.floor((performance.now() - t0) / 1000);
+      btn.textContent = `Stop  ${s} s`;
+      if (s >= LIMIT) stop();
+    }, 250);
+  };
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,2 @@
+# Check text files out with LF on every platform, so the tree matches the export byte for byte.
+* text=auto eol=lf

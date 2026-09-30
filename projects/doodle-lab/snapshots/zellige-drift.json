@@ -1,0 +1,14 @@
+{
+ "title": "Zellige Drift",
+ "blurb": "A fivefold zellige with strapwork; the phason orbit flips tiles while the view circles.",
+ "chain": "Multigrid Zellige → Glow · LFO → Phason X",
+ "tags": [
+  "synth snapshot",
+  "multigrid"
+ ],
+ "controls": "Knobs: Phason orbit, Tile size, Grout width, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#zellige-drift"
+}

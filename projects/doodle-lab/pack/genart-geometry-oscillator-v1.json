@@ -1,0 +1,12 @@
+{
+ "title": "Geometry Oscillator",
+ "blurb": "Hyperbolic {p,q} tilings, quasicrystal waves and rotating 4D polytopes, with mirror folds.",
+ "tags": [
+  "math",
+  "shader"
+ ],
+ "controls": "Choose a source; A/B sliders; mirror folds; H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "WebGL2 fragment shader"
+}

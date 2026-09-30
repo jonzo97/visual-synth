@@ -1,0 +1,1182 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "gemini-truchet-loops",
+      "name": "Truchet Loops",
+      "kind": "instrument",
+      "status": "curated",
+      "description": "Bioluminescent cells fold through two hyperbolic maps into reconnecting loop clusters.",
+      "tags": {
+        "behaviour": [
+          "stateful"
+        ],
+        "cost": "light",
+        "uses": [
+          "chemical",
+          "fx.hyperbolic"
+        ]
+      },
+      "devices": [
+        {
+          "type": "chemical",
+          "params": {
+            "seed": 42,
+            "grid": 256,
+            "palette": 6,
+            "feed": 0.032,
+            "kill": 0.06,
+            "diffusionU": 0.16,
+            "diffusionV": 0.08,
+            "steps": 4
+          }
+        },
+        {
+          "type": "fx.hyperbolic",
+          "params": {
+            "amount": 1,
+            "sides": 4,
+            "meet": 4,
+            "zoom": 1.2,
+            "drift": 0.25,
+            "spin": 1,
+            "scale": 0.45,
+            "rotation": 0,
+            "edge": 0.35,
+            "surround": 0
+          }
+        },
+        {
+          "type": "fx.hyperbolic",
+          "params": {
+            "amount": 0.85,
+            "sides": 4,
+            "meet": 3,
+            "zoom": 1,
+            "drift": 0.35,
+            "spin": -1,
+            "scale": 0.3,
+            "rotation": 0.785,
+            "edge": 0.4,
+            "surround": 0
+          }
+        }
+      ],
+      "patch": {
+        "version": 2,
+        "name": "Truchet Loops",
+        "nodes": [
+          {
+            "id": "source",
+            "type": "chemical",
+            "position": {
+              "x": 100,
+              "y": 100
+            },
+            "params": {
+              "seed": 42,
+              "grid": 256,
+              "palette": 6,
+              "feed": 0.032,
+              "kill": 0.06,
+              "diffusionU": 0.16,
+              "diffusionV": 0.08,
+              "steps": 4
+            }
+          },
+          {
+            "id": "map1",
+            "type": "fx.hyperbolic",
+            "position": {
+              "x": 300,
+              "y": 100
+            },
+            "params": {
+              "amount": 1,
+              "sides": 4,
+              "meet": 4,
+              "zoom": 1.2,
+              "drift": 0.25,
+              "spin": 1,
+              "scale": 0.45,
+              "rotation": 0,
+              "edge": 0.35,
+              "surround": 0
+            }
+          },
+          {
+            "id": "map2",
+            "type": "fx.hyperbolic",
+            "position": {
+              "x": 500,
+              "y": 100
+            },
+            "params": {
+              "amount": 0.85,
+              "sides": 4,
+              "meet": 3,
+              "zoom": 1,
+              "drift": 0.35,
+              "spin": -1,
+              "scale": 0.3,
+              "rotation": 0.785,
+              "edge": 0.4,
+              "surround": 0
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "position": {
+              "x": 700,
+              "y": 100
+            },
+            "params": {}
+          }
+        ],
+        "connections": [
+          {
+            "id": "c1",
+            "from": {
+              "node": "source",
+              "port": "frame"
+            },
+            "to": {
+              "node": "map1",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c2",
+            "from": {
+              "node": "map1",
+              "port": "frame"
+            },
+            "to": {
+              "node": "map2",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c3",
+            "from": {
+              "node": "map2",
+              "port": "frame"
+            },
+            "to": {
+              "node": "output",
+              "port": "in"
+            }
+          }
+        ],
+        "transport": {
+          "bpm": 120,
+          "loopSeconds": 16
+        },
+        "events": [],
+        "simulation": {
+          "tickHz": 60,
+          "warmupTicks": 0,
+          "events": []
+        }
+      },
+      "controls": [
+        {
+          "node": "source",
+          "param": "feed",
+          "label": "Cell feed"
+        },
+        {
+          "node": "map1",
+          "param": "drift",
+          "label": "Map drift"
+        },
+        {
+          "node": "map2",
+          "param": "scale",
+          "label": "Inner scale"
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "004-rack-seed-002",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 53.42,
+          "diff": 34.593,
+          "changed": 0.4743
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-stained-glass",
+      "name": "Stained Glass",
+      "kind": "instrument",
+      "status": "curated",
+      "description": "Jewel-toned hyperbolic cells fold into a backlit rose-window pattern.",
+      "tags": {
+        "behaviour": [
+          "loopable"
+        ],
+        "cost": "light",
+        "uses": [
+          "fx.kaleido",
+          "hyperbolic"
+        ]
+      },
+      "devices": [
+        {
+          "type": "hyperbolic",
+          "params": {
+            "sides": 7,
+            "meet": 3,
+            "drift": 0.18,
+            "spin": 0,
+            "rotation": 0,
+            "zoom": 1.15,
+            "edge": 2.2,
+            "spread": 0.14,
+            "cycles": 2,
+            "palette": 9,
+            "offset": 0
+          }
+        },
+        {
+          "type": "fx.kaleido",
+          "params": {
+            "amount": 1,
+            "segments": 6,
+            "rotation": 0.26,
+            "zoom": 1,
+            "twist": 0.05
+          }
+        },
+        {
+          "type": "fx.kaleido",
+          "params": {
+            "amount": 0.85,
+            "segments": 8,
+            "rotation": -0.52,
+            "zoom": 1.1,
+            "twist": -0.04
+          }
+        }
+      ],
+      "patch": {
+        "version": 2,
+        "name": "Stained Glass",
+        "nodes": [
+          {
+            "id": "tiling",
+            "type": "hyperbolic",
+            "position": {
+              "x": 100,
+              "y": 100
+            },
+            "params": {
+              "sides": 7,
+              "meet": 3,
+              "drift": 0.18,
+              "spin": 0,
+              "rotation": 0,
+              "zoom": 1.15,
+              "edge": 2.2,
+              "spread": 0.14,
+              "cycles": 2,
+              "palette": 9,
+              "offset": 0
+            }
+          },
+          {
+            "id": "kaleido1",
+            "type": "fx.kaleido",
+            "position": {
+              "x": 300,
+              "y": 100
+            },
+            "params": {
+              "amount": 1,
+              "segments": 6,
+              "rotation": 0.26,
+              "zoom": 1,
+              "twist": 0.05
+            }
+          },
+          {
+            "id": "kaleido2",
+            "type": "fx.kaleido",
+            "position": {
+              "x": 500,
+              "y": 100
+            },
+            "params": {
+              "amount": 0.85,
+              "segments": 8,
+              "rotation": -0.52,
+              "zoom": 1.1,
+              "twist": -0.04
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "position": {
+              "x": 700,
+              "y": 100
+            },
+            "params": {}
+          }
+        ],
+        "connections": [
+          {
+            "id": "c1",
+            "from": {
+              "node": "tiling",
+              "port": "frame"
+            },
+            "to": {
+              "node": "kaleido1",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c2",
+            "from": {
+              "node": "kaleido1",
+              "port": "frame"
+            },
+            "to": {
+              "node": "kaleido2",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c3",
+            "from": {
+              "node": "kaleido2",
+              "port": "frame"
+            },
+            "to": {
+              "node": "output",
+              "port": "in"
+            }
+          }
+        ],
+        "transport": {
+          "bpm": 120,
+          "loopSeconds": 16
+        },
+        "events": [],
+        "simulation": {
+          "tickHz": 60,
+          "warmupTicks": 0,
+          "events": []
+        }
+      },
+      "controls": [
+        {
+          "node": "tiling",
+          "param": "edge",
+          "label": "Lead width"
+        },
+        {
+          "node": "tiling",
+          "param": "spread",
+          "label": "Color spread"
+        },
+        {
+          "node": "kaleido2",
+          "param": "twist",
+          "label": "Outer twist"
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "006-rack-seed-004",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 40.94,
+          "diff": 28.039,
+          "changed": 0.5578
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-magnetic-pendulum",
+      "name": "Magnetic Pendulum",
+      "kind": "instrument",
+      "status": "curated",
+      "description": "A Julia field is pulled through cascaded warps into an iridescent pendulum-basin proxy.",
+      "tags": {
+        "behaviour": [
+          "loopable"
+        ],
+        "cost": "medium",
+        "uses": [
+          "fx.warp",
+          "julia"
+        ]
+      },
+      "devices": [
+        {
+          "type": "julia",
+          "params": {
+            "shape": 0,
+            "cx": -0.15,
+            "cy": 0.55,
+            "cz": 0.25,
+            "breathe": 0.72,
+            "slice": 0,
+            "power": 3,
+            "orbit": 1,
+            "distance": 2.6,
+            "tilt": 0.3,
+            "glow": 1.1,
+            "hue": 0.62,
+            "spread": 1.4,
+            "offset": 0
+          }
+        },
+        {
+          "type": "fx.warp",
+          "params": {
+            "amount": 1,
+            "strength": 0.12,
+            "mode": 0,
+            "boundary": 1
+          }
+        },
+        {
+          "type": "fx.warp",
+          "params": {
+            "amount": 0.85,
+            "strength": 0.06,
+            "mode": 1,
+            "boundary": 1
+          }
+        }
+      ],
+      "patch": {
+        "version": 2,
+        "name": "Magnetic Pendulum",
+        "nodes": [
+          {
+            "id": "source",
+            "type": "julia",
+            "position": {
+              "x": 100,
+              "y": 100
+            },
+            "params": {
+              "shape": 0,
+              "cx": -0.15,
+              "cy": 0.55,
+              "cz": 0.25,
+              "breathe": 0.72,
+              "slice": 0,
+              "power": 3,
+              "orbit": 1,
+              "distance": 2.6,
+              "tilt": 0.3,
+              "glow": 1.1,
+              "hue": 0.62,
+              "spread": 1.4,
+              "offset": 0
+            }
+          },
+          {
+            "id": "warp1",
+            "type": "fx.warp",
+            "position": {
+              "x": 320,
+              "y": 100
+            },
+            "params": {
+              "amount": 1,
+              "strength": 0.12,
+              "mode": 0,
+              "boundary": 1
+            }
+          },
+          {
+            "id": "warp2",
+            "type": "fx.warp",
+            "position": {
+              "x": 540,
+              "y": 100
+            },
+            "params": {
+              "amount": 0.85,
+              "strength": 0.06,
+              "mode": 1,
+              "boundary": 1
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "position": {
+              "x": 760,
+              "y": 100
+            },
+            "params": {}
+          }
+        ],
+        "connections": [
+          {
+            "id": "c1",
+            "from": {
+              "node": "source",
+              "port": "frame"
+            },
+            "to": {
+              "node": "warp1",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c2",
+            "from": {
+              "node": "source",
+              "port": "frame"
+            },
+            "to": {
+              "node": "warp1",
+              "port": "field"
+            }
+          },
+          {
+            "id": "c3",
+            "from": {
+              "node": "warp1",
+              "port": "frame"
+            },
+            "to": {
+              "node": "warp2",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c4",
+            "from": {
+              "node": "source",
+              "port": "frame"
+            },
+            "to": {
+              "node": "warp2",
+              "port": "field"
+            }
+          },
+          {
+            "id": "c5",
+            "from": {
+              "node": "warp2",
+              "port": "frame"
+            },
+            "to": {
+              "node": "output",
+              "port": "in"
+            }
+          }
+        ],
+        "transport": {
+          "bpm": 120,
+          "loopSeconds": 16
+        },
+        "events": [],
+        "simulation": {
+          "tickHz": 60,
+          "warmupTicks": 0,
+          "events": []
+        }
+      },
+      "controls": [
+        {
+          "node": "source",
+          "param": "power",
+          "label": "Fractal power"
+        },
+        {
+          "node": "source",
+          "param": "breathe",
+          "label": "Breathing"
+        },
+        {
+          "node": "warp1",
+          "param": "strength",
+          "label": "Warp strength"
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "008-rack-seed-006",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 52.46,
+          "diff": 26.081,
+          "changed": 0.5065
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-blue-cell-kaleidoscope",
+      "name": "Blue Cell Kaleidoscope",
+      "kind": "instrument",
+      "status": "curated",
+      "description": "Bright blue and magenta cell outlines fold through paired kaleidoscopes.",
+      "tags": {
+        "behaviour": [
+          "loopable"
+        ],
+        "cost": "light",
+        "uses": [
+          "fx.kaleido",
+          "hyperbolic"
+        ]
+      },
+      "devices": [
+        {
+          "type": "hyperbolic",
+          "params": {
+            "sides": 7,
+            "meet": 3,
+            "drift": 0.35,
+            "spin": 1,
+            "rotation": 0,
+            "zoom": 1.2,
+            "edge": 1.5,
+            "spread": 0.08,
+            "cycles": 1,
+            "palette": 9,
+            "offset": 0
+          }
+        },
+        {
+          "type": "fx.kaleido",
+          "params": {
+            "amount": 1,
+            "segments": 6,
+            "rotation": 0.4,
+            "zoom": 1,
+            "twist": 0.2
+          }
+        },
+        {
+          "type": "fx.kaleido",
+          "params": {
+            "amount": 1,
+            "segments": 4,
+            "rotation": -0.25,
+            "zoom": 1.1,
+            "twist": -0.15
+          }
+        }
+      ],
+      "patch": {
+        "version": 2,
+        "name": "Blue Cell Kaleidoscope",
+        "nodes": [
+          {
+            "id": "source",
+            "type": "hyperbolic",
+            "position": {
+              "x": 100,
+              "y": 200
+            },
+            "params": {
+              "sides": 7,
+              "meet": 3,
+              "drift": 0.35,
+              "spin": 1,
+              "rotation": 0,
+              "zoom": 1.2,
+              "edge": 1.5,
+              "spread": 0.08,
+              "cycles": 1,
+              "palette": 9,
+              "offset": 0
+            }
+          },
+          {
+            "id": "kaleido1",
+            "type": "fx.kaleido",
+            "position": {
+              "x": 320,
+              "y": 200
+            },
+            "params": {
+              "amount": 1,
+              "segments": 6,
+              "rotation": 0.4,
+              "zoom": 1,
+              "twist": 0.2
+            }
+          },
+          {
+            "id": "kaleido2",
+            "type": "fx.kaleido",
+            "position": {
+              "x": 540,
+              "y": 200
+            },
+            "params": {
+              "amount": 1,
+              "segments": 4,
+              "rotation": -0.25,
+              "zoom": 1.1,
+              "twist": -0.15
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "position": {
+              "x": 760,
+              "y": 200
+            },
+            "params": {}
+          }
+        ],
+        "connections": [
+          {
+            "id": "c1",
+            "from": {
+              "node": "source",
+              "port": "frame"
+            },
+            "to": {
+              "node": "kaleido1",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c2",
+            "from": {
+              "node": "kaleido1",
+              "port": "frame"
+            },
+            "to": {
+              "node": "kaleido2",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c3",
+            "from": {
+              "node": "kaleido2",
+              "port": "frame"
+            },
+            "to": {
+              "node": "output",
+              "port": "in"
+            }
+          }
+        ],
+        "transport": {
+          "bpm": 120,
+          "loopSeconds": 16
+        },
+        "events": [],
+        "simulation": {
+          "tickHz": 60,
+          "warmupTicks": 0,
+          "events": []
+        }
+      },
+      "controls": [
+        {
+          "node": "source",
+          "param": "edge",
+          "label": "Cell outline"
+        },
+        {
+          "node": "source",
+          "param": "spread",
+          "label": "Color spread"
+        },
+        {
+          "node": "kaleido1",
+          "param": "twist",
+          "label": "Mirror twist"
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "012-rack-seed-010",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 0,
+          "diff": 0,
+          "changed": 0
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-hat-monotile",
+      "name": "Hat Monotile",
+      "kind": "instrument",
+      "status": "candidate",
+      "description": "Chemical cells and hyperbolic maps approximate a monotile-like tiling study.",
+      "tags": {
+        "behaviour": [
+          "stateful"
+        ],
+        "cost": "light",
+        "uses": [
+          "chemical",
+          "fx.hyperbolic"
+        ]
+      },
+      "devices": [
+        {
+          "type": "chemical",
+          "params": {
+            "seed": 31415,
+            "grid": 256,
+            "palette": 6,
+            "feed": 0.032,
+            "kill": 0.058,
+            "diffusionU": 0.16,
+            "diffusionV": 0.08,
+            "steps": 4
+          }
+        },
+        {
+          "type": "fx.hyperbolic",
+          "params": {
+            "amount": 1,
+            "sides": 7,
+            "meet": 3,
+            "zoom": 1.2,
+            "drift": 0.2,
+            "spin": 0,
+            "scale": 0.4,
+            "rotation": 0,
+            "edge": 0.55,
+            "surround": 0.15
+          }
+        },
+        {
+          "type": "fx.hyperbolic",
+          "params": {
+            "amount": 0.85,
+            "sides": 5,
+            "meet": 4,
+            "zoom": 1,
+            "drift": 0.35,
+            "spin": 1,
+            "scale": 0.6,
+            "rotation": 0.5,
+            "edge": 0.3,
+            "surround": 0
+          }
+        }
+      ],
+      "patch": {
+        "version": 2,
+        "name": "Hat Monotile",
+        "nodes": [
+          {
+            "id": "source",
+            "type": "chemical",
+            "position": {
+              "x": 100,
+              "y": 200
+            },
+            "params": {
+              "seed": 31415,
+              "grid": 256,
+              "palette": 6,
+              "feed": 0.032,
+              "kill": 0.058,
+              "diffusionU": 0.16,
+              "diffusionV": 0.08,
+              "steps": 4
+            }
+          },
+          {
+            "id": "hyperbolic_1",
+            "type": "fx.hyperbolic",
+            "position": {
+              "x": 350,
+              "y": 200
+            },
+            "params": {
+              "amount": 1,
+              "sides": 7,
+              "meet": 3,
+              "zoom": 1.2,
+              "drift": 0.2,
+              "spin": 0,
+              "scale": 0.4,
+              "rotation": 0,
+              "edge": 0.55,
+              "surround": 0.15
+            }
+          },
+          {
+            "id": "hyperbolic_2",
+            "type": "fx.hyperbolic",
+            "position": {
+              "x": 600,
+              "y": 200
+            },
+            "params": {
+              "amount": 0.85,
+              "sides": 5,
+              "meet": 4,
+              "zoom": 1,
+              "drift": 0.35,
+              "spin": 1,
+              "scale": 0.6,
+              "rotation": 0.5,
+              "edge": 0.3,
+              "surround": 0
+            }
+          },
+          {
+            "id": "output",
+            "type": "output",
+            "position": {
+              "x": 850,
+              "y": 200
+            },
+            "params": {}
+          }
+        ],
+        "connections": [
+          {
+            "id": "c1",
+            "from": {
+              "node": "source",
+              "port": "frame"
+            },
+            "to": {
+              "node": "hyperbolic_1",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c2",
+            "from": {
+              "node": "hyperbolic_1",
+              "port": "frame"
+            },
+            "to": {
+              "node": "hyperbolic_2",
+              "port": "in"
+            }
+          },
+          {
+            "id": "c3",
+            "from": {
+              "node": "hyperbolic_2",
+              "port": "frame"
+            },
+            "to": {
+              "node": "output",
+              "port": "in"
+            }
+          }
+        ],
+        "transport": {
+          "bpm": 120,
+          "loopSeconds": 16
+        },
+        "events": [],
+        "simulation": {
+          "tickHz": 60,
+          "warmupTicks": 0,
+          "events": []
+        }
+      },
+      "controls": [
+        {
+          "node": "source",
+          "param": "kill",
+          "label": "Reaction kill"
+        },
+        {
+          "node": "hyperbolic_1",
+          "param": "edge",
+          "label": "Edge weight"
+        },
+        {
+          "node": "hyperbolic_2",
+          "param": "drift",
+          "label": "Map drift"
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "010-rack-seed-008",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 55.53,
+          "diff": 39.821,
+          "changed": 0.5
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-twin-kaleidoscope",
+      "name": "Twin Kaleidoscope",
+      "kind": "rack",
+      "status": "candidate",
+      "description": "Two kaleidoscope stages fold incoming imagery into compound radial symmetry.",
+      "tags": {
+        "behaviour": [
+          "needs-input"
+        ],
+        "cost": "light",
+        "uses": [
+          "fx.kaleido"
+        ]
+      },
+      "devices": [
+        {
+          "type": "fx.kaleido",
+          "params": {
+            "amount": 1,
+            "segments": 8,
+            "rotation": 0.39,
+            "zoom": 1.2,
+            "twist": 0.2
+          }
+        },
+        {
+          "type": "fx.kaleido",
+          "params": {
+            "amount": 0.85,
+            "segments": 6,
+            "rotation": -0.78,
+            "zoom": 0.9,
+            "twist": -0.15
+          }
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "003-rack-seed-001",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 37.79,
+          "diff": 38.251,
+          "changed": 0.7302
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-field-warp",
+      "name": "Field Warp",
+      "kind": "rack",
+      "status": "candidate",
+      "description": "Two field-warp stages bend incoming imagery into a recursive mesh.",
+      "tags": {
+        "behaviour": [
+          "needs-input"
+        ],
+        "cost": "light",
+        "uses": [
+          "fx.warp"
+        ]
+      },
+      "devices": [
+        {
+          "type": "fx.warp",
+          "params": {
+            "amount": 1,
+            "strength": 0.14,
+            "mode": 0,
+            "boundary": 1
+          }
+        },
+        {
+          "type": "fx.warp",
+          "params": {
+            "amount": 0.85,
+            "strength": 0.06,
+            "mode": 1,
+            "boundary": 1
+          }
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "005-rack-seed-003",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 50.84,
+          "diff": 51.946,
+          "changed": 0.5951
+        }
+      },
+      "added": "2026-09-25"
+    },
+    {
+      "id": "gemini-hyperbolic-pair",
+      "name": "Hyperbolic Pair",
+      "kind": "rack",
+      "status": "candidate",
+      "description": "Two hyperbolic mappings transform incoming imagery into nested disk geometry.",
+      "tags": {
+        "behaviour": [
+          "needs-input"
+        ],
+        "cost": "light",
+        "uses": [
+          "fx.hyperbolic"
+        ]
+      },
+      "devices": [
+        {
+          "type": "fx.hyperbolic",
+          "params": {
+            "amount": 0.95,
+            "sides": 7,
+            "meet": 3,
+            "zoom": 1.25,
+            "drift": 0.28,
+            "spin": 1,
+            "scale": 0.45,
+            "rotation": 0.4,
+            "edge": 0.35,
+            "surround": 0.15
+          }
+        },
+        {
+          "type": "fx.hyperbolic",
+          "params": {
+            "amount": 0.8,
+            "sides": 5,
+            "meet": 4,
+            "zoom": 0.9,
+            "drift": 0.42,
+            "spin": -1,
+            "scale": 0.25,
+            "rotation": -0.78,
+            "edge": 0.5,
+            "surround": 0.2
+          }
+        }
+      ],
+      "source": {
+        "tool": "gemini-foundry",
+        "run": "007-rack-seed-005",
+        "model": "gemini-3.8-flash-high",
+        "metrics": {
+          "std": 20.74,
+          "diff": 16.328,
+          "changed": 0.426
+        }
+      },
+      "added": "2026-09-25"
+    }
+  ]
+}

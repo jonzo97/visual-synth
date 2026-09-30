@@ -1,0 +1,15 @@
+{
+ "title": "Nautilus Julia",
+ "blurb": "A quaternion Julia set, a complex Julia set spun around the real axis, breathing as its constant orbits.",
+ "chain": "Breathing Julia (quaternion)",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "fractal"
+ ],
+ "controls": "Knobs: 4D slice, c j, Glow, Morph · Drag steers the Julia constant c · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#nautilus-julia"
+}

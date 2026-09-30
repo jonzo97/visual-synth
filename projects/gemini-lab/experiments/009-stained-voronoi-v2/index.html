@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backlit Voronoi Stained Glass v2</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #040407;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #e2e8f0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #glcanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+    #overlay {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      width: 290px;
+      padding: 16px 18px;
+      background: rgba(8, 10, 16, 0.84);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.75);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .panel-header {
+      margin-bottom: 14px;
+    }
+    .panel-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      color: #f8fafc;
+      text-transform: uppercase;
+    }
+    .panel-subtitle {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 3px;
+    }
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 12px;
+    }
+    .control-row:last-child {
+      margin-bottom: 0;
+    }
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+    .val-display {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #38bdf8;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.65);
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: none;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.65);
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas"></canvas>
+
+  <div id="overlay">
+    <div class="panel-header">
+      <div class="panel-title">Backlit Voronoi Stained Glass v2</div>
+      <div class="panel-subtitle">Press 'H' to toggle controls</div>
+    </div>
+
+    <div class="control-row">
+      <div class="label-row">
+        <label for="sun-sweep">Sun Angle</label>
+        <span id="sun-sweep-val" class="val-display">45°</span>
+      </div>
+      <input type="range" id="sun-sweep" min="0" max="360" step="1" value="45">
+    </div>
+
+    <div class="control-row">
+      <div class="label-row">
+        <label for="caustic">Caustic Intensity</label>
+        <span id="caustic-val" class="val-display">1.3</span>
+      </div>
+      <input type="range" id="caustic" min="0.2" max="2.5" step="0.1" value="1.3">
+    </div>
+
+    <div class="control-row">
+      <div class="label-row">
+        <label for="gauge">Armature Gauge</label>
+        <span id="gauge-val" class="val-display">1.00</span>
+      </div>
+      <input type="range" id="gauge" min="0.5" max="2.0" step="0.05" value="1.00">
+    </div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    // Seed parsing and Mulberry32 PRNG
+    const urlParams = new URLSearchParams(window.location.search);
+    const seedParam = parseInt(urlParams.get('seed') || '1', 10);
+    const initialSeed = isNaN(seedParam) ? 1 : seedParam;
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+    const rng = mulberry32(initialSeed);
+    const shaderSeed = rng() * 1000.0 + 1.0;
+
+    // UI Elements
+    const overlay = document.getElementById('overlay');
+    const sunSweepInput = document.getElementById('sun-sweep');
+    const causticInput = document.getElementById('caustic');
+    const gaugeInput = document.getElementById('gauge');
+    const sunSweepVal = document.getElementById('sun-sweep-val');
+    const causticVal = document.getElementById('caustic-val');
+    const gaugeVal = document.getElementById('gauge-val');
+
+    sunSweepInput.addEventListener('input', () => { sunSweepVal.textContent = sunSweepInput.value + '°'; });
+    causticInput.addEventListener('input', () => { causticVal.textContent = parseFloat(causticInput.value).toFixed(1); });
+    gaugeInput.addEventListener('input', () => { gaugeVal.textContent = parseFloat(gaugeInput.value).toFixed(2); });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    // Pointer interactivity (acts within 100ms)
+    let pointerX = 0.5, pointerY = 0.5;
+    let targetPointerX = 0.5, targetPointerY = 0.5;
+    let pointerActive = 0.0;
+
+    window.addEventListener('pointermove', (e) => {
+      targetPointerX = e.clientX / window.innerWidth;
+      targetPointerY = 1.0 - (e.clientY / window.innerHeight);
+      pointerActive = 1.0;
+    });
+
+    window.addEventListener('pointerdown', (e) => {
+      targetPointerX = e.clientX / window.innerWidth;
+      targetPointerY = 1.0 - (e.clientY / window.innerHeight);
+      pointerActive = 1.0;
+    });
+
+    // WebGL2 Context setup
+    const canvas = document.getElementById('glcanvas');
+    const gl = canvas.getContext('webgl2', {
+      alpha: false,
+      depth: false,
+      stencil: false,
+      antialias: false,
+      powerPreference: 'high-performance'
+    });
+
+    if (!gl) {
+      throw new Error('WebGL2 is not supported or could not be initialized.');
+    }
+
+    const vertexShaderSource = `#version 300 es
+      in vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    const fragmentShaderSource = `#version 300 es
+      precision highp float;
+      precision highp int;
+
+      out vec4 fragColor;
+
+      uniform vec2 u_resolution;
+      uniform float u_time;
+      uniform float u_seed;
+      uniform float u_sun_angle;
+      uniform float u_caustic;
+      uniform float u_gauge;
+      uniform vec3 u_mouse;
+
+      #define PI 3.14159265359
+      #define TWO_PI 6.28318530718
+
+      float hash1(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7) + u_seed * 0.17)) * 43758.5453);
+      }
+
+      // Multi-frequency caustic simulation
+      float getCaustics(vec2 pos, float t) {
+        vec2 cP = pos * 8.2;
+        float tC = t * 0.42;
+        float caust = 0.0;
+        vec2 shift = vec2(0.0);
+        for (int k = 1; k <= 3; k++) {
+          float fk = float(k);
+          shift += vec2(sin(cP.y * 1.35 + tC * 0.35 + fk), cos(cP.x * 1.35 - tC * 0.3 + fk * 1.4));
+          cP += shift * 0.35;
+          caust += abs(sin(cP.x + cP.y + tC * 0.28)) / fk;
+        }
+        return pow(caust * 0.72, 2.2) * 2.2;
+      }
+
+      // Architectural Gothic Rose Window Tracery Distance Field & Saturated Palette
+      void getRoseTracery(vec2 p, out float dIron, out float dLead, out vec3 col, out float nodule) {
+        float r = length(p);
+        float theta = atan(p.y, p.x);
+
+        // Concentric structural iron armature rings
+        float dR0 = abs(r - 0.055);
+        float dR1 = abs(r - 0.145);
+        float dR2 = abs(r - 0.285);
+        float dR3 = abs(r - 0.420);
+        float dR_outer_iron = min(dR0, min(dR1, min(dR2, dR3)));
+
+        // 12 Primary Radiating Iron Spokes
+        float s12 = TWO_PI / 12.0;
+        float a12 = mod(theta + 0.5 * s12, s12) - 0.5 * s12;
+        float dSpokes12 = r * abs(sin(a12));
+
+        dIron = min(dR_outer_iron, dSpokes12);
+
+        // Secondary Radial & Tracery Divisions
+        float s24 = TWO_PI / 24.0;
+        float a24 = mod(theta + 0.5 * s24, s24) - 0.5 * s24;
+        float dSpokes24 = (r > 0.145) ? (r * abs(sin(a24))) : 1.0;
+
+        // Tier 1 (0.055 to 0.145): 12-Foil Rosette cusps
+        float secIdx12 = floor((theta + 0.5 * s12) / s12);
+        float cAngle12 = secIdx12 * s12;
+        vec2 lobeC = vec2(cos(cAngle12), sin(cAngle12)) * 0.100;
+        float dLobe = abs(length(p - lobeC) - 0.045);
+
+        // Tier 2 (0.145 to 0.285): Intermediate trefoil dividing ring
+        float dMidRing = abs(r - 0.215);
+
+        // Tier 3 (0.285 to 0.420): Roundels ring at 0.352 and 24 circular roundels
+        float dRoundRing = abs(r - 0.352);
+        float secIdx24 = floor((theta + 0.5 * s24) / s24);
+        float cAngle24 = secIdx24 * s24;
+        vec2 roundelC = vec2(cos(cAngle24), sin(cAngle24)) * 0.352;
+        float dRoundel = abs(length(p - roundelC) - 0.038);
+
+        // Outer 48 border lancet tips
+        float s48 = TWO_PI / 48.0;
+        float a48 = mod(theta + 0.5 * s48, s48) - 0.5 * s48;
+        float dSpokes48 = (r > 0.352) ? (r * abs(sin(a48))) : 1.0;
+
+        dLead = min(min(dSpokes24, dMidRing), min(min(dLobe, dRoundRing), min(dRoundel, dSpokes48)));
+
+        // Solder nodules at came/armature intersections
+        float spokeMin = min(dSpokes12, dSpokes24);
+        float ringMin = min(dR_outer_iron, min(dMidRing, dRoundRing));
+        nodule = max(0.0, 1.0 - (spokeMin + ringMin) * 85.0);
+
+        // Authentic medieval stained glass palette (un-bleached, saturated jewel tones)
+        vec3 C_COBALT  = vec3(0.024, 0.165, 0.850); // Chartres Cobalt Sapphire
+        vec3 C_RUBY    = vec3(0.880, 0.040, 0.110); // Medieval Copper Ruby Crimson
+        vec3 C_AMBER   = vec3(0.980, 0.660, 0.040); // Radiant Golden Amber
+        vec3 C_EMERALD = vec3(0.020, 0.650, 0.360); // Cathedral Emerald Green
+        vec3 C_VIOLET  = vec3(0.500, 0.070, 0.720); // Imperial Amethyst
+
+        int i12 = int(secIdx12) + 120;
+        int i24 = int(secIdx24) + 120;
+        int i48 = int(floor((theta + 0.5 * s48) / s48)) + 120;
+
+        if (r < 0.055) {
+          // Central rosette boss
+          col = (r < 0.028) ? C_AMBER : C_RUBY;
+        } else if (r < 0.145) {
+          // Tier 1: 12-Foil Rosette
+          bool inLobe = length(p - lobeC) < 0.045;
+          col = inLobe ? ((i12 % 2 == 0) ? C_RUBY : C_COBALT) : ((i12 % 2 == 0) ? C_COBALT : C_AMBER);
+        } else if (r < 0.285) {
+          // Tier 2: 24 Radiating Lancets
+          int m = i24 % 4;
+          if (m == 0 || m == 1) col = C_COBALT;
+          else if (m == 2) col = C_RUBY;
+          else col = (i24 % 8 == 3) ? C_AMBER : C_EMERALD;
+
+          if (r > 0.215) {
+            if (m == 0) col = C_VIOLET;
+            else if (m == 2) col = C_AMBER;
+          }
+        } else {
+          // Tier 3: Roundels & Border
+          bool inRoundel = length(p - roundelC) < 0.038;
+          if (inRoundel) {
+            col = (i24 % 2 == 0) ? C_RUBY : C_AMBER;
+          } else if (r < 0.352) {
+            col = C_COBALT;
+          } else {
+            int b = i48 % 4;
+            if (b == 0) col = C_RUBY;
+            else if (b == 1) col = C_AMBER;
+            else if (b == 2) col = C_COBALT;
+            else col = C_EMERALD;
+          }
+        }
+
+        // Hand-blown antique glass grain & cord striations
+        float cord = sin(p.x * 60.0 + sin(p.y * 45.0) * 2.0 + float(i12)) * 0.06;
+        float grain = fract(sin(dot(p * 280.0, vec2(17.13, 53.71)) + float(i24)) * 43758.5453);
+        col *= 0.94 + 0.10 * grain + cord;
+      }
+
+      // Relief distance inside glass panels for analytic bevel normals
+      float getGlassReliefDist(vec2 p) {
+        float dIron, dLead, nodule;
+        vec3 col;
+        getRoseTracery(p, dIron, dLead, col, nodule);
+        float ironW = 0.0075 * u_gauge;
+        float leadW = (0.0035 + nodule * 0.0035) * u_gauge;
+        return min(dIron - ironW, dLead - leadW);
+      }
+
+      void main() {
+        vec2 p = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+        float r = length(p);
+        float theta = atan(p.y, p.x);
+
+        // Animated Volumetric Sunlight Angle sweeping across the scene
+        float sunAngleRad = radians(u_sun_angle) + u_time * 0.14 + (u_mouse.x - 0.5) * 2.6;
+        vec2 sunDir2D = vec2(cos(sunAngleRad), sin(sunAngleRad));
+        vec3 L_sun = normalize(vec3(sunDir2D, 0.55 + 0.22 * sin(sunAngleRad * 0.7)));
+
+        vec3 V = vec3(0.0, 0.0, 1.0);
+        vec3 H = normalize(L_sun + V);
+
+        // Outer Enclosing Stone Masonry Arch (r > 0.420)
+        float dStone = r - 0.420;
+        float moldSlope = cos(clamp(dStone / 0.14, 0.0, 1.0) * PI * 3.0) * 1.6;
+        vec2 radDir = (r > 1e-5) ? (p / r) : vec2(0.0, 1.0);
+        vec3 N_stone = normalize(vec3(radDir * (0.6 + moldSlope * 0.4), 0.7));
+
+        // Stone texture: Caen limestone grain & radial voussoir mortar joints
+        float sVoussoir = TWO_PI / 24.0;
+        float aVoussoir = mod(theta + 0.5 * sVoussoir, sVoussoir) - 0.5 * sVoussoir;
+        float stoneJoint = smoothstep(0.002, 0.0, abs(aVoussoir) * r);
+        float stoneNoise = hash1(floor(p * 200.0)) * 0.12 + hash1(floor(p * 50.0)) * 0.08;
+        vec3 stoneCol = vec3(0.32, 0.29, 0.25) * (0.88 + stoneNoise);
+        stoneCol *= (1.0 - 0.5 * stoneJoint);
+
+        // Volumetric caustic projection onto the enclosing stone arch
+        vec2 projP = p - sunDir2D * (0.24 + dStone * 0.7);
+        float rProj = length(projP);
+        vec3 causticWash = vec3(0.0);
+        if (rProj < 0.415) {
+          float dI, dL, nod;
+          vec3 pCol;
+          getRoseTracery(projP, dI, dL, pCol, nod);
+          float cIntensity = getCaustics(projP, u_time);
+          float projMask = smoothstep(0.415, 0.380, rProj);
+          float raking = max(0.0, dot(N_stone, L_sun));
+          causticWash = pCol * (0.8 + 1.4 * cIntensity) * (0.5 * raking + 0.3) * projMask * u_caustic;
+        }
+
+        float stoneDiff = max(0.0, dot(N_stone, L_sun));
+        vec3 finalStone = stoneCol * (0.16 + stoneDiff * 0.75) + causticWash * 1.8;
+
+        // Inside the Gothic Rose Window (r <= 0.420)
+        float dIron, dLead, nodule;
+        vec3 glassColor;
+        getRoseTracery(p, dIron, dLead, glassColor, nodule);
+
+        float ironW = 0.0075 * u_gauge;
+        float leadW = (0.0035 + nodule * 0.0035) * u_gauge;
+
+        bool isIron = dIron < ironW;
+        bool isLead = (!isIron) && (dLead < leadW);
+
+        vec3 windowCol = vec3(0.0);
+
+        if (isIron) {
+          // Heavy structural wrought iron armatures with rivets
+          float ironFrac = clamp(dIron / ironW, 0.0, 1.0);
+          float ironArc = sqrt(max(0.0, 1.0 - ironFrac * ironFrac));
+          vec3 N_iron = normalize(vec3(-radDir * ironFrac * 0.8, ironArc));
+          vec3 ironCol = vec3(0.035, 0.038, 0.042);
+          float ironSpec = pow(max(0.0, dot(N_iron, H)), 18.0) * 0.3;
+          windowCol = ironCol + vec3(0.25, 0.28, 0.32) * ironSpec;
+
+          if (nodule > 0.6) {
+            float rivetSpec = pow(max(0.0, dot(N_iron, H)), 32.0) * 0.6;
+            windowCol += vec3(0.35, 0.38, 0.45) * rivetSpec;
+          }
+        } else if (isLead) {
+          // Lead came network with silvery solder nodules
+          float leadFrac = clamp(dLead / leadW, 0.0, 1.0);
+          float leadArc = sqrt(max(0.0, 1.0 - leadFrac * leadFrac));
+          vec3 N_lead = normalize(vec3(-radDir * leadFrac * 1.2, leadArc * 0.8 + 0.2));
+          vec3 baseLead = mix(vec3(0.048, 0.052, 0.058), vec3(0.14, 0.15, 0.18), nodule);
+          float leadSpec = pow(max(0.0, dot(N_lead, H)), 20.0) * (0.3 + 0.4 * nodule);
+          windowCol = baseLead + vec3(0.35, 0.38, 0.45) * leadSpec;
+        } else {
+          // Clean, artifact-free analytic bevel normals and pillow-cut relief
+          float dGlass = min(dIron - ironW, dLead - leadW);
+
+          float eps = 0.0016;
+          float dR = getGlassReliefDist(p + vec2(eps, 0.0));
+          float dL = getGlassReliefDist(p - vec2(eps, 0.0));
+          float dU = getGlassReliefDist(p + vec2(0.0, eps));
+          float dD = getGlassReliefDist(p - vec2(0.0, eps));
+          vec2 grad = vec2(dR - dL, dU - dD) / (2.0 * eps);
+          float gradLen = length(grad);
+          vec2 normGrad = (gradLen > 1e-5) ? (grad / gradLen) : vec2(0.0, 1.0);
+
+          float bevelW = 0.022;
+          float bevelT = clamp(dGlass / bevelW, 0.0, 1.0);
+          float bevelProfile = sqrt(bevelT);
+          float slope = (1.0 - bevelProfile) * 2.6;
+          vec3 N_glass = normalize(vec3(-normGrad * slope, 1.0));
+
+          // Multi-frequency caustic transmission and sunlight alignment
+          float caust = getCaustics(p, u_time);
+          float dSun = length(p - sunDir2D * 0.25);
+          float sunBeam = exp(-dSun * 2.2) * 1.8 + exp(-dSun * 5.0) * 1.4;
+
+          // Pure saturated Beer-Lambert transmission (avoids bleaching!)
+          float glassThickness = 0.35 + 0.65 * bevelProfile;
+          float transmission = (0.55 + sunBeam * 0.75 + caust * 0.45 * u_caustic) * glassThickness;
+          vec3 litGlass = glassColor * transmission;
+
+          // Colored internal caustics & facet rim reflection
+          litGlass += glassColor * caust * 0.6 * u_caustic;
+          float facetRim = pow(1.0 - bevelProfile, 2.0) * 0.9 * (1.0 + 0.5 * caust);
+          litGlass += glassColor * facetRim;
+
+          // Crisp front room specular highlight & Fresnel sheen
+          float glassSpec = pow(max(0.0, dot(N_glass, H)), 52.0) * 0.45;
+          float glassFresnel = pow(1.0 - max(0.0, dot(N_glass, V)), 4.0) * 0.25;
+          litGlass += vec3(0.92, 0.95, 1.0) * (glassSpec + glassFresnel * 0.5);
+
+          windowCol = litGlass;
+        }
+
+        // Composite rose window inside carved stone arch embrasure
+        float windowEdge = smoothstep(0.421, 0.418, r);
+        vec3 finalColor = mix(finalStone, windowCol, windowEdge);
+
+        // Soft architectural vignette
+        vec2 screenUV = gl_FragCoord.xy / u_resolution.xy;
+        float vig = 16.0 * screenUV.x * screenUV.y * (1.0 - screenUV.x) * (1.0 - screenUV.y);
+        vig = clamp(pow(vig, 0.25), 0.0, 1.0);
+        finalColor *= vig * 0.85 + 0.15;
+
+        // Reinhard-Luminance tone mapping (preserves 100% chromaticity and deep saturation)
+        float lum = dot(finalColor, vec3(0.2126, 0.7152, 0.0722));
+        finalColor = finalColor / (1.0 + lum * 0.60);
+        finalColor = pow(finalColor, vec3(1.0 / 2.2));
+
+        fragColor = vec4(finalColor, 1.0);
+      }
+    `;
+
+    function compileShader(source, type) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const info = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error('Shader compilation failed: ' + info);
+      }
+      return shader;
+    }
+
+    const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
+    const fs = compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const info = gl.getProgramInfoLog(program);
+      gl.deleteProgram(program);
+      throw new Error('Program linking failed: ' + info);
+    }
+
+    gl.useProgram(program);
+
+    // Uniform locations
+    const uResolutionLoc = gl.getUniformLocation(program, 'u_resolution');
+    const uTimeLoc = gl.getUniformLocation(program, 'u_time');
+    const uSeedLoc = gl.getUniformLocation(program, 'u_seed');
+    const uSunAngleLoc = gl.getUniformLocation(program, 'u_sun_angle');
+    const uCausticLoc = gl.getUniformLocation(program, 'u_caustic');
+    const uGaugeLoc = gl.getUniformLocation(program, 'u_gauge');
+    const uMouseLoc = gl.getUniformLocation(program, 'u_mouse');
+
+    gl.uniform1f(uSeedLoc, shaderSeed);
+
+    // Fullscreen single triangle
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,
+       3, -1,
+      -1,  3
+    ]), gl.STATIC_DRAW);
+
+    const aPosLoc = gl.getAttribLocation(program, 'a_position');
+    gl.enableVertexAttribArray(aPosLoc);
+    gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // Window sizing with devicePixelRatio capped at 2
+    let displayWidth = 0;
+    let displayHeight = 0;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.floor(window.innerWidth * dpr);
+      const height = Math.floor(window.innerHeight * dpr);
+
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        displayWidth = width;
+        displayHeight = height;
+        gl.viewport(0, 0, width, height);
+      }
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Render loop
+    let startTime = null;
+
+    function render(now) {
+      window.__frames++;
+      requestAnimationFrame(render);
+
+      if (startTime === null) {
+        startTime = now;
+      }
+      const time = (now - startTime) * 0.001;
+
+      // Pointer interpolation for silky smooth reactive illumination
+      pointerX += (targetPointerX - pointerX) * 0.12;
+      pointerY += (targetPointerY - pointerY) * 0.12;
+
+      gl.useProgram(program);
+      gl.bindVertexArray(vao);
+
+      gl.uniform2f(uResolutionLoc, displayWidth, displayHeight);
+      gl.uniform1f(uTimeLoc, time);
+      gl.uniform1f(uSunAngleLoc, parseFloat(sunSweepInput.value));
+      gl.uniform1f(uCausticLoc, parseFloat(causticInput.value));
+      gl.uniform1f(uGaugeLoc, parseFloat(gaugeInput.value));
+      gl.uniform3f(uMouseLoc, pointerX, pointerY, pointerActive);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

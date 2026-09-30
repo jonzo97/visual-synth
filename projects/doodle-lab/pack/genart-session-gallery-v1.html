@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Generative night</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+<style>
+/*
+  Generative night: a session gallery.
+  Live demos:
+   - Liquid marbling: domain-warped fbm (noise bending noise) banded into ink
+     veins; taps add persistent vortices.
+   - Feedback tunnel: ping-pong framebuffers; each frame samples the previous
+     one zoomed, rotated and hue-shifted, plus a seed shape (camera-at-monitor).
+   - Cymatics: particles random-walk with step size proportional to plate
+     amplitude u(x,y) of a Chladni mode, so they settle on nodal lines.
+  Gallery tab links the earlier pieces from the session.
+*/
+:root {
+  --bar-bg: rgba(12, 11, 16, 0.78);
+  --panel-bg: rgba(16, 14, 22, 0.82);
+  --fg: #efeae2;
+  --muted: #a8a09a;
+  --accent: #f0b35a;
+  --line: rgba(255,255,255,0.16);
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bar-bg: rgba(12, 11, 16, 0.78); } }
+:root[data-theme="dark"] { --bar-bg: rgba(12, 11, 16, 0.78); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+html, body { height: 100%; margin: 0; }
+body { background: #0d0c11; color: var(--fg); overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: none; touch-action: none; }
+canvas.active { display: block; }
+.bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+  display: flex; align-items: center; gap: 10px; background: var(--bar-bg);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+}
+.brand { font-family: "Fraunces", Georgia, serif; font-size: 17px; white-space: nowrap; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; flex: 1; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab, .btn {
+  font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 1px solid transparent;
+  border-radius: 16px; padding: 6px 12px; cursor: pointer; white-space: nowrap;
+}
+.tab[aria-selected="true"] { background: rgba(240,179,90,0.18); border-color: var(--accent); }
+.btn { border-color: var(--line); background: rgba(255,255,255,0.06); }
+.btn.rec-on { background: rgba(180, 34, 44, 0.9); border-color: transparent; }
+.tab:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 560px) { .brand { display: none; } }
+.panel {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+  width: min(290px, calc(100vw - 24px)); background: var(--panel-bg); border-radius: 10px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 13px; line-height: 1.4;
+}
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; }
+.panel summary::-webkit-details-marker { display: none; }
+.pbody { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 82px 1fr 44px; align-items: center; gap: 8px; color: var(--muted); }
+label output { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+select { font: inherit; color: var(--fg); background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; flex: 1; }
+select option { color: #1b1b1b; }
+.row .btn { border-radius: 6px; }
+.btn[aria-pressed="true"] { background: rgba(240,179,90,0.22); border-color: var(--accent); }
+.hint { color: var(--muted); font-size: 12px; }
+.gallery {
+  position: fixed; inset: 0; overflow-y: auto; display: none; z-index: 3;
+  padding: calc(76px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  background: radial-gradient(circle at 20% 0%, #231b2e, #0d0c11 70%);
+}
+.gallery.active { display: block; }
+.gallery h1 { font-family: "Fraunces", Georgia, serif; font-weight: 500; font-size: clamp(28px, 6vw, 44px); margin: 8px 0 4px; }
+.gallery .sub { color: var(--muted); margin: 0 0 22px; max-width: 60ch; line-height: 1.5; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; max-width: 1000px; }
+.card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: rgba(255,255,255,0.03); display: grid; gap: 6px; text-decoration: none; color: var(--fg); }
+.card:hover { border-color: var(--accent); }
+.card .t { font-weight: 600; font-size: 15px; }
+.card .d { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.card .k { font-size: 12px; color: var(--accent); }
+.gallery h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 26px 0 10px; font-weight: 600; }
+.err { color: #ffb4a8; font-size: 12px; white-space: pre-wrap; }
+</style>
+<script src="../tools/lab-shim.js"></script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="c2d"></canvas>
+
+<header class="bar">
+  <div class="brand">Generative night</div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="marble" aria-selected="true">Marbling</button>
+    <button class="tab" role="tab" data-tab="feedback" aria-selected="false">Feedback</button>
+    <button class="tab" role="tab" data-tab="cymatics" aria-selected="false">Cymatics</button>
+    <button class="tab" role="tab" data-tab="gallery" aria-selected="false">Gallery</button>
+  </nav>
+  <button class="btn" id="rec" hidden>Record</button>
+</header>
+
+<details class="panel" id="panel" open>
+  <summary id="ptitle">Controls</summary>
+  <div class="pbody" id="pbody"></div>
+</details>
+
+<section class="gallery" id="gallery">
+  <h1>Generative night</h1>
+  <p class="sub">One evening of math turned into pictures, built with Claude Opus 5.5 on September 22, 2026. Every piece is generated from rules alone: no images, no data. Each one runs live in your browser.</p>
+  <h2>Live on this page</h2>
+  <div class="grid">
+    <a class="card" href="#" data-go="marble"><span class="t">Liquid marbling</span><span class="d">Noise bending noise, banded into ink veins like ebru paper. Tap to drop ink.</span><span class="k">Open tab</span></a>
+    <a class="card" href="#" data-go="feedback"><span class="t">Feedback tunnel</span><span class="d">A camera pointed at its own monitor, in software. The analog video-synth classic.</span><span class="k">Open tab</span></a>
+    <a class="card" href="#" data-go="cymatics"><span class="t">Cymatics</span><span class="d">Sand on a vibrating plate, settling onto the silent lines of a standing wave.</span><span class="k">Open tab</span></a>
+  </div>
+  <h2>Earlier tonight</h2>
+  <div class="grid">
+    <a class="card" href="./genart-attractor-v1.html" target="_blank" rel="noopener"><span class="t">Attractor exposures</span><span class="d">Tens of millions of points from a two-line equation, developed like a cyanotype print.</span><span class="k">Open</span></a>
+    <a class="card" href="./genart-physarum-v1.html" target="_blank" rel="noopener"><span class="t">Physarum culture</span><span class="d">Slime-mold agents that follow each other's trails and grow a transport network in a petri dish.</span><span class="k">Open</span></a>
+    <a class="card" href="./genart-multigrid-v2.html" target="_blank" rel="noopener"><span class="t">Multigrid zellige</span><span class="d">Exact tilings that never repeat, from Penrose to 11-fold, glazed like ceramic tilework.</span><span class="k">Open</span></a>
+    <a class="card" href="./genart-geometry-oscillator-v1.html" target="_blank" rel="noopener"><span class="t">Geometry oscillator</span><span class="d">Hyperbolic tilings, quasicrystal waves, and 4D polytopes, built as dry signal for a visual synth.</span><span class="k">Open</span></a>
+    <a class="card" href="./genart-mycelial-mind-v1.html" target="_blank" rel="noopener"><span class="t">Mycelial mind</span><span class="d">A fungal network that grows, learns which paths matter, and thinks in spikes. Feed it, poke it, poison it.</span><span class="k">Open</span></a>
+  </div>
+</section>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const glc = $("gl"), c2 = $("c2d"), ctx = c2.getContext("2d");
+  const gl = glc.getContext("webgl2");
+  let tab = "marble", W = 0, H = 0;
+
+  // ---------- Shared control builder ----------
+  const state = { cAuto: true };
+  function buildControls(title, items, hint) {
+    $("ptitle").textContent = title;
+    const body = $("pbody"); body.innerHTML = "";
+    for (const it of items) {
+      if (it.type === "range") {
+        const l = document.createElement("label");
+        l.innerHTML = `${it.label} <input type="range" min="${it.min}" max="${it.max}" step="${it.step}" value="${state[it.id] ?? it.value}"><output></output>`;
+        const inp = l.querySelector("input"), out = l.querySelector("output");
+        const upd = () => { state[it.id] = +inp.value; out.textContent = it.fmt ? it.fmt(+inp.value) : inp.value; it.on && it.on(); };
+        inp.addEventListener("input", upd); upd(); body.appendChild(l);
+      } else if (it.type === "select") {
+        const r = document.createElement("div"); r.className = "row";
+        const s = document.createElement("select"); s.setAttribute("aria-label", it.label);
+        it.options.forEach((o, i) => s.add(new Option(o, i)));
+        s.value = state[it.id] ?? 0; state[it.id] = +s.value;
+        s.onchange = () => { state[it.id] = +s.value; it.on && it.on(); };
+        r.appendChild(s); body.appendChild(r);
+      } else if (it.type === "buttons") {
+        const r = document.createElement("div"); r.className = "row";
+        for (const b of it.buttons) {
+          const el = document.createElement("button"); el.className = "btn"; el.textContent = b.label;
+          if (b.toggle) { el.setAttribute("aria-pressed", !!state[b.toggle]); }
+          el.onclick = () => { if (b.toggle) { state[b.toggle] = !state[b.toggle]; el.setAttribute("aria-pressed", state[b.toggle]); } b.on && b.on(); };
+          r.appendChild(el);
+        }
+        body.appendChild(r);
+      }
+    }
+    if (hint) { const h = document.createElement("div"); h.className = "hint"; h.textContent = hint; body.appendChild(h); }
+  }
+
+  // ---------- WebGL2 setup ----------
+  const VS = `#version 300 es
+  in vec2 pos; void main(){ gl_Position = vec4(pos, 0.0, 1.0); }`;
+  const NOISE = `
+  float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+  float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y); }
+  float fbm(vec2 p){ float v = 0.0, a = 0.5; mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+    for (int i = 0; i < 5; i++) { v += a * noise(p); p = m * p; a *= 0.5; } return v; }`;
+
+  const MARBLE_FS = `#version 300 es
+  precision highp float; out vec4 o;
+  uniform vec2 uRes; uniform float uTime, uWarp, uScale; uniform int uPal, uN; uniform vec4 uDrops[8];
+  ${NOISE}
+  const vec3 EBRU[5] = vec3[5](vec3(0.94,0.89,0.80), vec3(0.12,0.23,0.42), vec3(0.76,0.25,0.18), vec3(0.82,0.60,0.23), vec3(0.17,0.43,0.42));
+  const vec3 ACID[5] = vec3[5](vec3(0.33,0.05,0.43), vec3(1.0,0.24,0.5), vec3(1.0,0.82,0.25), vec3(0.23,0.81,0.67), vec3(0.05,0.1,0.25));
+  vec3 ink(int i){ return uPal == 0 ? EBRU[i] : ACID[i]; }
+  void main(){
+    vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / min(uRes.x, uRes.y);
+    float ring = 0.0;
+    for (int i = 0; i < 8; i++) {
+      if (i >= uN) break;
+      vec2 c = uDrops[i].xy; float age = uTime - uDrops[i].z;
+      vec2 d = p - c; float r2 = dot(d, d);
+      float a = 3.0 * exp(-r2 / 0.03) * (1.0 - exp(-age * 0.7));     // vortex that winds up over time
+      d = mat2(cos(a), -sin(a), sin(a), cos(a)) * d;
+      p = c + d;
+      ring += exp(-r2 / (0.003 + 0.012 * min(age, 4.0)));
+    }
+    vec2 q = p * uScale;
+    vec2 w1 = vec2(fbm(q + vec2(0.0, uTime * 0.04)), fbm(q + vec2(5.2, 1.3)));
+    vec2 w2 = vec2(fbm(q + uWarp * w1 + vec2(1.7, 9.2) + uTime * 0.02), fbm(q + uWarp * w1 + vec2(8.3, 2.8)));
+    float f = fbm(q + uWarp * w2) + ring * 0.35;
+    float b = f * 7.0, band = fract(b);
+    int i0 = int(mod(floor(b), 5.0)), i1 = int(mod(floor(b) + 1.0, 5.0));
+    vec3 col = mix(ink(i0), ink(i1), smoothstep(0.82, 1.0, band));
+    float vein = smoothstep(0.0, 0.05, band) * smoothstep(1.0, 0.95, band);
+    col *= 0.8 + 0.2 * vein;
+    col += (hash(gl_FragCoord.xy) - 0.5) * 0.03;                     // paper tooth
+    o = vec4(col, 1.0);
+  }`;
+
+  const FEED_FS = `#version 300 es
+  precision highp float; out vec4 o;
+  uniform sampler2D uPrev; uniform vec2 uRes, uCenter; uniform float uTime, uZoom, uTwist, uDrift, uDecay; uniform int uShape;
+  vec3 hueRot(vec3 c, float a){ const vec3 k = vec3(0.57735); float ca = cos(a); return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca); }
+  void main(){
+    vec2 uv = gl_FragCoord.xy / uRes, asp = vec2(uRes.x / uRes.y, 1.0);
+    vec2 d = (uv - uCenter) * asp;
+    d = mat2(cos(uTwist), -sin(uTwist), sin(uTwist), cos(uTwist)) * d / uZoom;
+    vec2 suv = uCenter + d / asp;
+    float inside = step(0.0, suv.x) * step(suv.x, 1.0) * step(0.0, suv.y) * step(suv.y, 1.0);
+    vec3 prev = hueRot(texture(uPrev, suv).rgb, uDrift) * uDecay * inside;
+    vec2 s = (uv - uCenter) * asp; float t = uTime, sd;
+    if (uShape == 0) sd = abs(length(s) - 0.08 - 0.02 * sin(t * 2.0)) - 0.006;
+    else if (uShape == 1) { float an = atan(s.y, s.x) + t * 0.5; sd = abs(length(s) - 0.07 - 0.03 * cos(5.0 * an)) - 0.005; }
+    else { float a = t * 0.7; vec2 r = mat2(cos(a), -sin(a), sin(a), cos(a)) * s; sd = abs(max(abs(r.x), abs(r.y)) - 0.07) - 0.005; }
+    float seed = smoothstep(0.004, 0.0, sd);
+    vec3 sc = 0.5 + 0.5 * cos(6.28318 * (t * 0.1 + vec3(0.0, 0.33, 0.67)));
+    o = vec4(max(prev, seed * sc), 1.0);
+  }`;
+  const BLIT_FS = `#version 300 es
+  precision highp float; out vec4 o; uniform sampler2D uTex; uniform vec2 uRes;
+  void main(){ o = vec4(texture(uTex, gl_FragCoord.xy / uRes).rgb, 1.0); }`;
+
+  function program(fs) {
+    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const p = gl.createProgram();
+    gl.attachShader(p, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, "pos"); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const cache = {};
+    return { p, u: (n) => cache[n] ?? (cache[n] = gl.getUniformLocation(p, n)) };
+  }
+  let PM, PF, PB, glError = "";
+  if (!gl) glError = "Marbling and Feedback need WebGL2, which this browser does not provide.";
+  else {
+    try { PM = program(MARBLE_FS); PF = program(FEED_FS); PB = program(BLIT_FS); }
+    catch (e) { glError = "Shader error:\n" + e.message; }
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  }
+
+  // Feedback ping-pong targets
+  let fb = null;
+  function makeTargets(w, h) {
+    const mk = () => {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      return { t, f };
+    };
+    fb = { a: mk(), b: mk(), w, h };
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  // ---------- Demo: marbling ----------
+  const drops = []; let dropIdx = 0;
+  const marble = {
+    t: 0,
+    controls() {
+      buildControls("Liquid marbling", [
+        { type: "select", id: "mPal", label: "Inks", options: ["Ebru inks", "Acid inks"] },
+        { type: "range", id: "mWarp", label: "Warp", min: 0.5, max: 6, step: 0.05, value: 3.5, fmt: v => v.toFixed(1) },
+        { type: "range", id: "mScale", label: "Scale", min: 1, max: 6, step: 0.05, value: 2.4, fmt: v => v.toFixed(1) },
+        { type: "range", id: "mSpeed", label: "Flow", min: 0, max: 2, step: 0.01, value: 0.6, fmt: v => v.toFixed(2) },
+        { type: "buttons", buttons: [{ label: "Clear ink drops", on: () => { drops.length = 0; } }] },
+      ], "Tap to drop ink. Each drop winds into a vortex over a few seconds.");
+    },
+    frame(dt) {
+      this.t += dt * state.mSpeed;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, glc.width, glc.height);
+      gl.useProgram(PM.p);
+      gl.uniform2f(PM.u("uRes"), glc.width, glc.height); gl.uniform1f(PM.u("uTime"), this.t);
+      gl.uniform1f(PM.u("uWarp"), state.mWarp); gl.uniform1f(PM.u("uScale"), state.mScale);
+      gl.uniform1i(PM.u("uPal"), state.mPal);
+      const arr = new Float32Array(32); drops.forEach((d, i) => arr.set([d.x, d.y, d.t, 0], i * 4));
+      gl.uniform4fv(PM.u("uDrops"), arr); gl.uniform1i(PM.u("uN"), drops.length);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    },
+    tap(x, y) {
+      const s = glc.width / innerWidth, m = Math.min(glc.width, glc.height);
+      const d = { x: (x * s - glc.width / 2) / m, y: (glc.height / 2 - y * s) / m, t: this.t };
+      if (drops.length < 8) drops.push(d); else { drops[dropIdx] = d; dropIdx = (dropIdx + 1) % 8; }
+    },
+  };
+
+  // ---------- Demo: feedback tunnel ----------
+  const feedback = {
+    t: 0, center: [0.5, 0.5],
+    controls() {
+      buildControls("Feedback tunnel", [
+        { type: "select", id: "fShape", label: "Seed", options: ["Seed: ring", "Seed: star", "Seed: square"] },
+        { type: "range", id: "fZoom", label: "Zoom", min: 0.9, max: 1.12, step: 0.001, value: 1.035, fmt: v => v.toFixed(3) },
+        { type: "range", id: "fTwist", label: "Twist", min: -0.1, max: 0.1, step: 0.001, value: 0.02, fmt: v => v.toFixed(3) },
+        { type: "range", id: "fDrift", label: "Color drift", min: 0, max: 0.25, step: 0.001, value: 0.035, fmt: v => v.toFixed(3) },
+        { type: "range", id: "fDecay", label: "Persistence", min: 0.85, max: 0.998, step: 0.001, value: 0.975, fmt: v => v.toFixed(3) },
+        { type: "buttons", buttons: [{ label: "Clear screen", on: () => { if (fb) makeTargets(fb.w, fb.h); } }, { label: "Recenter", on: () => { this.center = [0.5, 0.5]; } }] },
+      ], "Tap to move the loop's center. Zoom below 1 turns the tunnel inside out.");
+    },
+    frame(dt) {
+      this.t += dt;
+      const w = glc.width, h = glc.height;
+      if (!fb || fb.w !== w || fb.h !== h) makeTargets(w, h);
+      gl.useProgram(PF.p); gl.viewport(0, 0, w, h);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb.b.f);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fb.a.t);
+      gl.uniform1i(PF.u("uPrev"), 0); gl.uniform2f(PF.u("uRes"), w, h);
+      gl.uniform2f(PF.u("uCenter"), this.center[0], this.center[1]);
+      gl.uniform1f(PF.u("uTime"), this.t); gl.uniform1f(PF.u("uZoom"), state.fZoom);
+      gl.uniform1f(PF.u("uTwist"), state.fTwist); gl.uniform1f(PF.u("uDrift"), state.fDrift);
+      gl.uniform1f(PF.u("uDecay"), state.fDecay); gl.uniform1i(PF.u("uShape"), state.fShape);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.useProgram(PB.p); gl.bindTexture(gl.TEXTURE_2D, fb.b.t);
+      gl.uniform1i(PB.u("uTex"), 0); gl.uniform2f(PB.u("uRes"), w, h);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      const tmp = fb.a; fb.a = fb.b; fb.b = tmp;
+    },
+    tap(x, y) { this.center = [x / innerWidth, 1 - y / innerHeight]; },
+  };
+
+  // ---------- Demo: cymatics ----------
+  const N = matchMedia("(max-width: 700px)").matches ? 9000 : 16000;
+  const px = new Float32Array(N), py = new Float32Array(N);
+  let audio = null;
+  const cym = {
+    lastSwitch: 0, t: 0,
+    scatter() { for (let i = 0; i < N; i++) { px[i] = Math.random(); py[i] = Math.random(); } },
+    freq() { return 70 * Math.sqrt(state.cM ** 2 + state.cN ** 2); },
+    sound() {
+      if (state.cSound) {
+        try {
+          if (!audio) { const ac = new AudioContext(); const o = ac.createOscillator(), g = ac.createGain(); g.gain.value = 0.04; o.connect(g).connect(ac.destination); o.start(); audio = { ac, o, g }; }
+          audio.ac.resume(); audio.g.gain.value = 0.04; audio.o.frequency.setTargetAtTime(this.freq(), audio.ac.currentTime, 0.1);
+        } catch { state.cSound = false; }
+      } else if (audio) audio.g.gain.value = 0;
+    },
+    controls() {
+      buildControls("Cymatics", [
+        { type: "range", id: "cM", label: "Mode m", min: 1, max: 9, step: 1, value: 3, on: () => this.sound() },
+        { type: "range", id: "cN", label: "Mode n", min: 1, max: 9, step: 1, value: 5, on: () => this.sound() },
+        { type: "range", id: "cShake", label: "Vibration", min: 0.2, max: 2.5, step: 0.01, value: 1, fmt: v => v.toFixed(2) },
+        { type: "buttons", buttons: [
+          { label: "Auto modes", toggle: "cAuto" },
+          { label: "Sound", toggle: "cSound", on: () => this.sound() },
+          { label: "Scatter", on: () => this.scatter() },
+        ] },
+      ], "Grains shake hardest where the plate moves most, so they pile up on the still (nodal) lines. Equal m and n cancel out, so n is nudged.");
+    },
+    frame(dt) {
+      this.t += dt;
+      if (state.cAuto && this.t - this.lastSwitch > 9) {
+        this.lastSwitch = this.t;
+        state.cM = 1 + Math.floor(Math.random() * 8); state.cN = 1 + Math.floor(Math.random() * 8);
+        const inputs = $("pbody").querySelectorAll("input[type=range]");
+        inputs[0].value = state.cM; inputs[1].value = state.cN;
+        inputs[0].dispatchEvent(new Event("input")); inputs[1].dispatchEvent(new Event("input"));
+      }
+      const m = state.cM, n = state.cN === state.cM ? state.cM + 1 : state.cN;
+      const PI = Math.PI, amp = 0.03 * state.cShake;
+      for (let i = 0; i < N; i++) {
+        const x = px[i], y = py[i];
+        // Square-plate Chladni mode: u = cos(n pi x)cos(m pi y) - cos(m pi x)cos(n pi y)
+        const u = Math.cos(n * PI * x) * Math.cos(m * PI * y) - Math.cos(m * PI * x) * Math.cos(n * PI * y);
+        const step = amp * Math.abs(u) + 0.0004;
+        let nx = x + (Math.random() - 0.5) * step, ny = y + (Math.random() - 0.5) * step;
+        px[i] = nx < 0 ? -nx : nx > 1 ? 2 - nx : nx;
+        py[i] = ny < 0 ? -ny : ny > 1 ? 2 - ny : ny;
+      }
+      const dpr = c2.width / innerWidth, S = Math.min(innerWidth, innerHeight - 60) * 0.9;
+      const ox = (innerWidth - S) / 2, oy = 60 + (innerHeight - 60 - S) / 2;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#0f1014"; ctx.fillRect(0, 0, innerWidth, innerHeight);
+      ctx.fillStyle = "#1c1f26"; ctx.fillRect(ox, oy, S, S);
+      ctx.fillStyle = "rgba(236, 222, 192, 0.85)";
+      for (let i = 0; i < N; i++) ctx.fillRect(ox + px[i] * S, oy + py[i] * S, 1.3, 1.3);
+      ctx.fillStyle = "rgba(168,160,154,0.8)"; ctx.font = "12px 'Instrument Sans', sans-serif";
+      ctx.fillText(`mode (${m}, ${n})  ~${Math.round(this.freq())} Hz`, ox, oy + S + 18);
+    },
+    tap() { this.scatter(); },
+  };
+  cym.scatter();
+
+  // ---------- Tabs, sizing, loop ----------
+  const demos = { marble, feedback, cymatics: cym };
+  function activeCanvas() { return tab === "cymatics" ? c2 : glc; }
+  function setTab(name) {
+    tab = name;
+    document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
+    $("gallery").classList.toggle("active", name === "gallery");
+    $("panel").style.display = name === "gallery" ? "none" : "";
+    glc.classList.toggle("active", name === "marble" || name === "feedback");
+    c2.classList.toggle("active", name === "cymatics");
+    if (audio && name !== "cymatics") audio.g.gain.value = 0;
+    if (demos[name]) {
+      demos[name].controls();
+      if (glError && name !== "cymatics") { const e = document.createElement("div"); e.className = "err"; e.textContent = glError; $("pbody").appendChild(e); }
+      if (name === "cymatics") cym.sound();
+    }
+  }
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  document.querySelectorAll("[data-go]").forEach(a => a.onclick = (e) => { e.preventDefault(); setTab(a.dataset.go); });
+  [glc, c2].forEach(c => c.addEventListener("pointerdown", (e) => demos[tab] && demos[tab].tap(e.clientX, e.clientY)));
+
+  function resize() {
+    const s = Math.min(devicePixelRatio || 1, 1.5);
+    W = innerWidth; H = innerHeight;
+    glc.width = Math.floor(W * s); glc.height = Math.floor(H * s);
+    c2.width = Math.floor(W * s); c2.height = Math.floor(H * s);
+  }
+  addEventListener("resize", resize);
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const d = demos[tab];
+    if (d && (tab === "cymatics" || (gl && !glError))) d.frame(dt);
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Recording (captures the active canvas only) ----------
+  const recBtn = $("rec");
+  const TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = window.MediaRecorder && TYPES.find(t => MediaRecorder.isTypeSupported(t));
+  let downloads = null, rec = null, chunks = [], t0 = 0, tick = null;
+  (async () => {
+    if (!mime || !window.claude || !window.claude.use) return;
+    downloads = await window.claude.use("downloads");
+    if (downloads) recBtn.hidden = false;
+  })();
+  recBtn.onclick = () => {
+    if (rec && rec.state === "recording") return rec.stop();
+    if (tab === "gallery") return;
+    chunks = [];
+    rec = new MediaRecorder(activeCanvas().captureStream(60), { mimeType: mime, videoBitsPerSecond: 12e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(tick); recBtn.classList.remove("rec-on"); recBtn.textContent = "Saving...";
+      const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+      try { await downloads.save({ filename: `generative-night-${tab}-${Date.now()}.${ext}`, data: new Blob(chunks, { type: mime }) }); recBtn.textContent = "Saved"; }
+      catch (e) { recBtn.textContent = e && e.code === "declined" ? "Not saved" : "Save failed"; }
+      setTimeout(() => { recBtn.textContent = "Record"; }, 2000);
+    };
+    rec.start(250); t0 = performance.now(); recBtn.classList.add("rec-on");
+    tick = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); recBtn.textContent = `Stop ${s}s`; if (s >= 30) rec.stop(); }, 250);
+  };
+
+  // Doodle Lab: #marble, #feedback or #cymatics opens that tab directly.
+  resize(); setTab(Object.hasOwn(demos, location.hash.slice(1)) ? location.hash.slice(1) : "marble");
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

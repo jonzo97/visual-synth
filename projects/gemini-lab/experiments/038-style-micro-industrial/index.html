@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Micro Industrial Technical Spec Sheet</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background-color: #0d1117;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    color: #e0e6ed;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #cadCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  #overlay {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    background: rgba(13, 17, 23, 0.88);
+    border: 1px solid #486581;
+    border-radius: 4px;
+    padding: 12px 16px;
+    color: #e0e6ed;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    z-index: 1000;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+    min-width: 196px;
+  }
+  #overlay .title {
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #00ffcc;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #243b53;
+    padding-bottom: 6px;
+  }
+  #overlay .control {
+    margin-bottom: 10px;
+  }
+  #overlay .label-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 10.5px;
+    color: #8fa3b8;
+  }
+  #overlay .label-row .val {
+    color: #00ffcc;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-weight: 600;
+  }
+  #overlay input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #243b53;
+    border-radius: 2px;
+    outline: none;
+    margin: 0;
+    cursor: pointer;
+  }
+  #overlay input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #00ffcc;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
+    transition: transform 0.1s ease;
+  }
+  #overlay input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+  #overlay input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: none;
+    border-radius: 50%;
+    background: #00ffcc;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
+  }
+  #overlay .hint {
+    font-size: 9px;
+    color: #627d98;
+    margin-top: 8px;
+    text-align: right;
+    letter-spacing: 0.3px;
+  }
+</style>
+</head>
+<body>
+<canvas id="cadCanvas"></canvas>
+<div id="overlay">
+  <div class="title">Micro Industrial Technical Spec Sheet</div>
+  <div class="control">
+    <div class="label-row">
+      <span>Detail Density</span>
+      <span class="val" id="val-density">3</span>
+    </div>
+    <input type="range" id="slider-density" min="1" max="5" step="1" value="3">
+  </div>
+  <div class="control">
+    <div class="label-row">
+      <span>Animation Rate</span>
+      <span class="val" id="val-rate">1.0</span>
+    </div>
+    <input type="range" id="slider-rate" min="0" max="3" step="0.1" value="1">
+  </div>
+  <div class="control">
+    <div class="label-row">
+      <span>Grid Subdivision</span>
+      <span class="val" id="val-grid">12</span>
+    </div>
+    <input type="range" id="slider-grid" min="4" max="24" step="2" value="12">
+  </div>
+  <div class="hint">Press 'H' to toggle panel</div>
+</div>
+
+<script>
+window.__frames = 0;
+
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+let seedVal = parseInt(urlParams.get('seed') || '1', 10);
+if (isNaN(seedVal)) seedVal = 1;
+
+const rng = mulberry32(seedVal >>> 0);
+
+const modelId = Math.floor(rng() * 9000 + 1000);
+const batchCode = String.fromCharCode(65 + Math.floor(rng() * 26)) + String.fromCharCode(65 + Math.floor(rng() * 26)) + '-' + Math.floor(rng() * 899 + 100);
+const specRev = (rng() * 9 + 1).toFixed(1);
+const gearTeethOptions = [28, 32, 36, 40, 44];
+const gearTeeth = gearTeethOptions[Math.floor(rng() * gearTeethOptions.length)];
+const spokeCountOptions = [3, 4, 5, 6];
+const spokeCount = spokeCountOptions[Math.floor(rng() * spokeCountOptions.length)];
+const satelliteCount = Math.floor(rng() * 2) + 3;
+const baseTolerance = (0.005 + rng() * 0.015).toFixed(3);
+const primaryVoltage = 24 + Math.floor(rng() * 3) * 12;
+const pressureNominal = 120 + Math.floor(rng() * 60);
+const waveformHarmonic = Math.floor(rng() * 3) + 2;
+const baseMemoryAddr = 0x0A00 + Math.floor(rng() * 0x0400);
+
+const materials = [
+  "TITANIUM Ti-6Al-4V GR-5",
+  "AEROSPACE 7075-T6 ALUM",
+  "NICKEL ALLOY INCONEL-718",
+  "AUSTENITIC SS AISI-316L",
+  "CARBON-REINFORCED PEEK"
+];
+const material = materials[Math.floor(rng() * materials.length)];
+
+const canvas = document.getElementById('cadCanvas');
+const ctx = canvas.getContext('2d');
+
+const sliderDensity = document.getElementById('slider-density');
+const sliderRate = document.getElementById('slider-rate');
+const sliderGrid = document.getElementById('slider-grid');
+
+const valDensity = document.getElementById('val-density');
+const valRate = document.getElementById('val-rate');
+const valGrid = document.getElementById('val-grid');
+
+sliderDensity.addEventListener('input', () => { valDensity.textContent = sliderDensity.value; });
+sliderRate.addEventListener('input', () => { valRate.textContent = parseFloat(sliderRate.value).toFixed(1); });
+sliderGrid.addEventListener('input', () => { valGrid.textContent = sliderGrid.value; });
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    const overlay = document.getElementById('overlay');
+    if (overlay) {
+      overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+    }
+  }
+});
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+let dpr = 1;
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+function drawHazardStrip(ctx, x, y, w, h, stripeW, text) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = '#ffb703';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#0d1117';
+  
+  ctx.beginPath();
+  for (let d = -h; d < w + stripeW * 2; d += stripeW * 2) {
+    ctx.moveTo(x + d, y);
+    ctx.lineTo(x + d + stripeW, y);
+    ctx.lineTo(x + d + stripeW - h, y + h);
+    ctx.lineTo(x + d - h, y + h);
+    ctx.closePath();
+  }
+  ctx.fill();
+  
+  if (text && w > 140) {
+    const textW = ctx.measureText(text).width + 16;
+    const bx = x + (w - textW) / 2;
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(bx, y + 2, textW, h - 4);
+    ctx.strokeStyle = '#ffb703';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, y + 2, textW, h - 4);
+    ctx.fillStyle = '#ffb703';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + w / 2, y + h / 2);
+  }
+  
+  ctx.strokeStyle = '#ffb703';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.restore();
+}
+
+function drawBarcode(ctx, x, y, w, h, codeString, barSeed) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  
+  const bRng = mulberry32(barSeed);
+  let curX = x + 8;
+  const maxX = x + w - 8;
+  ctx.fillStyle = '#e0e6ed';
+  
+  ctx.fillRect(curX, y + 3, 2, h - 16); curX += 4;
+  ctx.fillRect(curX, y + 3, 1, h - 16); curX += 3;
+  
+  while (curX < maxX - 12) {
+    let barW = Math.floor(bRng() * 3) + 1;
+    let spaceW = Math.floor(bRng() * 3) + 1;
+    if (curX + barW > maxX - 8) break;
+    ctx.fillRect(curX, y + 3, barW, h - 16);
+    curX += barW + spaceW;
+  }
+  
+  ctx.fillRect(maxX - 8, y + 3, 2, h - 16);
+  ctx.fillRect(maxX - 4, y + 3, 1, h - 16);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7.5px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(codeString, x + w / 2, y + h - 2);
+  
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.restore();
+}
+
+function drawBackgroundGrid(ctx, w, h, subdiv) {
+  const step = Math.min(w, h) / subdiv;
+  ctx.save();
+  
+  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = '#141e28';
+  ctx.beginPath();
+  for (let x = 0; x < w; x += step * 0.5) {
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+  }
+  for (let y = 0; y < h; y += step * 0.5) {
+    ctx.moveTo(0, y); ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+  
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#1d2c3c';
+  ctx.beginPath();
+  for (let x = 0; x < w; x += step) {
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+  }
+  for (let y = 0; y < h; y += step) {
+    ctx.moveTo(0, y); ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+  
+  ctx.strokeStyle = '#334e68';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = step; x < w; x += step) {
+    for (let y = step; y < h; y += step) {
+      ctx.moveTo(x - 3, y); ctx.lineTo(x + 3, y);
+      ctx.moveTo(x, y - 3); ctx.lineTo(x, y + 3);
+    }
+  }
+  ctx.stroke();
+  
+  ctx.fillStyle = '#486581';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  let colIdx = 0;
+  for (let x = step / 2; x < w; x += step) {
+    const colTag = String.fromCharCode(65 + (colIdx % 26)) + (colIdx >= 26 ? Math.floor(colIdx / 26) : '');
+    ctx.fillText(colTag, x, 4);
+    colIdx++;
+  }
+  
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  let rowIdx = 1;
+  for (let y = step / 2; y < h; y += step) {
+    const rowTag = (rowIdx < 10 ? '0' : '') + rowIdx;
+    ctx.fillText(rowTag, 4, y);
+    rowIdx++;
+  }
+  
+  ctx.restore();
+}
+
+function drawGear(ctx, cx, cy, rInner, rPitch, rOuter, teeth, angle, color, strokeColor) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  
+  ctx.beginPath();
+  const step = (Math.PI * 2) / teeth;
+  const halfTooth = step * 0.24;
+  const tipWidth = step * 0.13;
+  
+  for (let i = 0; i < teeth; i++) {
+    const a = i * step;
+    const a0 = a - halfTooth;
+    const a1 = a - tipWidth;
+    const a2 = a + tipWidth;
+    const a3 = a + halfTooth;
+    const aRoot = a + step * 0.5;
+    
+    if (i === 0) {
+      ctx.moveTo(Math.cos(a0) * rInner, Math.sin(a0) * rInner);
+    } else {
+      ctx.lineTo(Math.cos(a0) * rInner, Math.sin(a0) * rInner);
+    }
+    ctx.lineTo(Math.cos(a1) * rOuter, Math.sin(a1) * rOuter);
+    ctx.lineTo(Math.cos(a2) * rOuter, Math.sin(a2) * rOuter);
+    ctx.lineTo(Math.cos(a3) * rInner, Math.sin(a3) * rInner);
+    ctx.lineTo(Math.cos(aRoot) * rInner, Math.sin(aRoot) * rInner);
+  }
+  ctx.closePath();
+  
+  if (color) {
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  if (strokeColor) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  }
+  
+  ctx.beginPath();
+  ctx.setLineDash([3, 3]);
+  ctx.arc(0, 0, rPitch, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  ctx.beginPath();
+  ctx.arc(0, 0, rInner, 0, Math.PI * 2);
+  ctx.strokeStyle = '#243b53';
+  ctx.stroke();
+  
+  ctx.restore();
+}
+
+function drawAzimuthDial(ctx, cx, cy, radius, angle, density) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.arc(0, 0, radius - 12, 0, Math.PI * 2);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  
+  for (let i = 0; i < 360; i += 2) {
+    const is30 = (i % 30 === 0);
+    const is10 = (i % 10 === 0);
+    
+    if (!is10 && density < 3) continue;
+    if (i % 2 !== 0 && density < 4) continue;
+    
+    const rad = (i * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    
+    let tickLen = 3;
+    let strokeCol = '#334e68';
+    
+    if (is30) {
+      tickLen = 10;
+      strokeCol = '#00ffcc';
+    } else if (is10) {
+      tickLen = 6;
+      strokeCol = '#e0e6ed';
+    }
+    
+    ctx.beginPath();
+    ctx.moveTo(cos * radius, sin * radius);
+    ctx.lineTo(cos * (radius - tickLen), sin * (radius - tickLen));
+    ctx.strokeStyle = strokeCol;
+    ctx.lineWidth = is30 ? 1.2 : 0.8;
+    ctx.stroke();
+    
+    if (is30 && density >= 2) {
+      ctx.save();
+      const textR = radius - 18;
+      ctx.translate(cos * textR, sin * textR);
+      ctx.rotate(rad + Math.PI / 2);
+      ctx.fillStyle = '#00ffcc';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const degStr = (i < 100 ? (i < 10 ? '00' : '0') : '') + i + '°';
+      ctx.fillText(degStr, 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function drawSatellites(ctx, cx, cy, orbitRadius, count, orbitAngle, satRadius, density) {
+  if (density < 2) return;
+  ctx.save();
+  ctx.translate(cx, cy);
+  
+  ctx.beginPath();
+  ctx.setLineDash([2, 4]);
+  ctx.arc(0, 0, orbitRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  for (let i = 0; i < count; i++) {
+    const a = orbitAngle + (i * Math.PI * 2) / count;
+    const sx = Math.cos(a) * orbitRadius;
+    const sy = Math.sin(a) * orbitRadius;
+    
+    ctx.save();
+    ctx.translate(sx, sy);
+    const selfRot = -orbitAngle * 2.4;
+    ctx.rotate(selfRot);
+    
+    const teeth = 10;
+    ctx.beginPath();
+    for (let t = 0; t < teeth; t++) {
+      const ta = (t * Math.PI * 2) / teeth;
+      const r0 = satRadius * 0.76;
+      const r1 = satRadius;
+      ctx.moveTo(Math.cos(ta - 0.12) * r0, Math.sin(ta - 0.12) * r0);
+      ctx.lineTo(Math.cos(ta) * r1, Math.sin(ta) * r1);
+      ctx.lineTo(Math.cos(ta + 0.12) * r0, Math.sin(ta + 0.12) * r0);
+    }
+    ctx.strokeStyle = '#486581';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, satRadius * 0.76, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f1620';
+    ctx.fill();
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+    ctx.moveTo(-4, 0); ctx.lineTo(4, 0);
+    ctx.moveTo(0, -4); ctx.lineTo(0, 4);
+    ctx.strokeStyle = '#e0e6ed';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    
+    if (density >= 4) {
+      ctx.fillStyle = '#829ab1';
+      ctx.font = '6.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('P' + (i + 1), 0, satRadius * 0.82);
+    }
+    
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawReticle(ctx, cx, cy, hubRadius, sweepAngle, density) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  
+  const sweepArc = 0.45;
+  const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, hubRadius * 1.8);
+  grad.addColorStop(0, 'rgba(0, 255, 204, 0.22)');
+  grad.addColorStop(0.7, 'rgba(0, 255, 204, 0.05)');
+  grad.addColorStop(1, 'rgba(0, 255, 204, 0)');
+  
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, hubRadius * 1.8, sweepAngle - sweepArc, sweepAngle);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(sweepAngle) * hubRadius * 1.8, Math.sin(sweepAngle) * hubRadius * 1.8);
+  ctx.strokeStyle = '#00ffcc';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
+  
+  ctx.beginPath();
+  ctx.arc(0, 0, hubRadius, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0f16';
+  ctx.fill();
+  ctx.strokeStyle = '#486581';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  
+  const boreR = hubRadius * 0.45;
+  ctx.beginPath();
+  ctx.arc(0, 0, boreR, 0, Math.PI * 2);
+  ctx.fillStyle = '#070a0f';
+  ctx.fill();
+  ctx.strokeStyle = '#00ffcc';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  
+  const kwW = boreR * 0.45;
+  const kwH = boreR * 0.45;
+  ctx.fillStyle = '#070a0f';
+  ctx.fillRect(-kwW / 2, -boreR - kwH / 2, kwW, kwH);
+  ctx.strokeStyle = '#00ffcc';
+  ctx.strokeRect(-kwW / 2, -boreR - kwH / 2, kwW, kwH);
+  
+  ctx.beginPath();
+  ctx.moveTo(-hubRadius * 1.25, 0); ctx.lineTo(-boreR * 1.15, 0);
+  ctx.moveTo(boreR * 1.15, 0); ctx.lineTo(hubRadius * 1.25, 0);
+  ctx.moveTo(0, -hubRadius * 1.25); ctx.lineTo(0, -boreR * 1.15);
+  ctx.moveTo(0, boreR * 1.15); ctx.lineTo(0, hubRadius * 1.25);
+  ctx.strokeStyle = '#e0e6ed';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  
+  ctx.restore();
+}
+
+function drawDimensionLeader(ctx, targetX, targetY, elbowX, elbowY, length, text, subtext) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(targetX, targetY, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#00ffcc';
+  ctx.fill();
+  
+  ctx.beginPath();
+  ctx.moveTo(targetX, targetY);
+  ctx.lineTo(elbowX, elbowY);
+  const endX = elbowX + length;
+  ctx.lineTo(endX, elbowY);
+  ctx.strokeStyle = '#00ffcc';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  
+  ctx.fillStyle = '#e0e6ed';
+  ctx.font = '8px monospace';
+  ctx.textAlign = length > 0 ? 'left' : 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(text, elbowX + (length > 0 ? 4 : -4), elbowY - 2);
+  
+  if (subtext) {
+    ctx.fillStyle = '#829ab1';
+    ctx.font = '7px monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillText(subtext, elbowX + (length > 0 ? 4 : -4), elbowY + 2);
+  }
+  ctx.restore();
+}
+
+function drawWaveformBox(ctx, x, y, w, h, time, rate, harmonic) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  
+  ctx.strokeStyle = '#121a24';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  for (let gx = x + 16; gx < x + w; gx += 16) {
+    ctx.moveTo(gx, y); ctx.lineTo(gx, y + h);
+  }
+  for (let gy = y + 12; gy < y + h; gy += 12) {
+    ctx.moveTo(x, gy); ctx.lineTo(x + w, gy);
+  }
+  ctx.stroke();
+  
+  const midY = y + h / 2;
+  ctx.beginPath();
+  ctx.setLineDash([2, 3]);
+  ctx.moveTo(x, midY);
+  ctx.lineTo(x + w, midY);
+  ctx.strokeStyle = '#243b53';
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  ctx.beginPath();
+  const amp = h * 0.34;
+  for (let px = 0; px < w; px += 2) {
+    const normX = px / w;
+    const wave = Math.sin(normX * Math.PI * 4 * harmonic + time * 3.5 * rate) * 0.65
+               + Math.cos(normX * Math.PI * 2 + time * 1.5 * rate) * 0.25
+               + Math.sin(normX * Math.PI * 10 * harmonic - time * 6 * rate) * 0.1;
+    const py = midY + wave * amp;
+    if (px === 0) ctx.moveTo(x + px, py);
+    else ctx.lineTo(x + px, py);
+  }
+  ctx.strokeStyle = '#00ffcc';
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  
+  const scanX = x + ((time * 75 * (rate || 0.1)) % w);
+  ctx.beginPath();
+  ctx.moveTo(scanX, y);
+  ctx.lineTo(scanX, y + h);
+  ctx.strokeStyle = 'rgba(0, 255, 204, 0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = '#00ffcc';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('DYNAMIC HARMONIC SENSOR TRACE // RES: 0.002%', x + 6, y + 4);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.textAlign = 'right';
+  ctx.fillText('f0=' + (harmonic * 142.5).toFixed(1) + 'Hz  THD=0.038%', x + w - 6, y + 4);
+  
+  ctx.restore();
+}
+
+function drawTitleBlock(ctx, x, y, w, h, modelId, batchCode, specRev, material) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  
+  ctx.strokeStyle = '#486581';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  const row1 = y + 18;
+  const row2 = y + 36;
+  const row3 = y + 54;
+  
+  ctx.beginPath();
+  ctx.moveTo(x, row1); ctx.lineTo(x + w, row1);
+  ctx.moveTo(x, row2); ctx.lineTo(x + w, row2);
+  ctx.moveTo(x, row3); ctx.lineTo(x + w, row3);
+  
+  const midX = x + w * 0.52;
+  ctx.moveTo(midX, row1); ctx.lineTo(midX, y + h);
+  ctx.stroke();
+  
+  ctx.fillStyle = '#00ffcc';
+  ctx.font = 'bold 8.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('ADVANCED KINEMATICS LAB', x + 5, y + 4);
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7px monospace';
+  ctx.fillText('SYSTEM SPECIFICATION SHEET', x + 5, y + 11);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '6.5px monospace';
+  ctx.fillText('DWG NO:', x + 5, row1 + 2);
+  ctx.fillStyle = '#e0e6ed';
+  ctx.font = 'bold 8px monospace';
+  ctx.fillText('DWG-' + modelId + '-' + batchCode, x + 5, row1 + 9);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '6.5px monospace';
+  ctx.fillText('REV:', midX + 5, row1 + 2);
+  ctx.fillStyle = '#ffb703';
+  ctx.font = 'bold 8px monospace';
+  ctx.fillText('v' + specRev + ' REL', midX + 5, row1 + 9);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '6.5px monospace';
+  ctx.fillText('SCALE: 1:1.25', x + 5, row2 + 3);
+  ctx.fillText('SHEET: 1 OF 1', midX + 5, row2 + 3);
+  ctx.fillText('UNITS: METRIC (mm)', x + 5, row2 + 10);
+  ctx.fillText('SIZE: A2', midX + 5, row2 + 10);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '6.5px monospace';
+  ctx.fillText('MAT: ' + (material.length > 15 ? material.substring(0, 15) + '..' : material), x + 5, row3 + 3);
+  ctx.fillText('APPR: SYS-ENG [VERIFIED]', x + 5, row3 + 10);
+  
+  ctx.restore();
+}
+
+function drawQaStamp(ctx, cx, cy, angle) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  
+  ctx.strokeStyle = 'rgba(255, 183, 3, 0.72)';
+  ctx.fillStyle = 'rgba(255, 183, 3, 0.72)';
+  ctx.lineWidth = 1.1;
+  
+  ctx.beginPath();
+  ctx.arc(0, 0, 24, 0, Math.PI * 2);
+  ctx.stroke();
+  
+  ctx.beginPath();
+  ctx.arc(0, 0, 20, 0, Math.PI * 2);
+  ctx.stroke();
+  
+  ctx.font = 'bold 6.5px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('QUALITY', 0, -7);
+  ctx.fillText('PASSED', 0, 0);
+  ctx.fillText('SEC-09', 0, 7);
+  
+  ctx.restore();
+}
+
+function drawToleranceHistogram(ctx, x, y, w, h, time, rate) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PROBE RUNOUT SPECTRUM (µm)', x + 6, y + 4);
+  
+  const barCount = 7;
+  const barW = (w - 18) / barCount;
+  const baseH = h - 22;
+  
+  for (let i = 0; i < barCount; i++) {
+    const bx = x + 9 + i * barW;
+    const dev = Math.sin(time * 2.2 * rate + i * 0.85) * 0.38 + 0.48;
+    const curH = Math.max(3, dev * (baseH - 6));
+    const by = y + h - 5 - curH;
+    
+    ctx.fillStyle = i === 3 ? '#00ffcc' : (dev > 0.78 ? '#ffb703' : '#334e68');
+    ctx.fillRect(bx + 1, by, barW - 2, curH);
+  }
+  
+  ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  ctx.moveTo(x + 6, y + h - 5 - baseH * 0.5);
+  ctx.lineTo(x + w - 6, y + h - 5 - baseH * 0.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  ctx.restore();
+}
+
+function drawSensorGauges(ctx, x, y, w, h, time, rate, pressureNominal, primaryVoltage) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = '#00ffcc';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('[SENSOR TELEMETRY BUS]', x + 6, y + 4);
+  
+  const numGauges = 4;
+  const gaugeH = (h - 18) / numGauges;
+  
+  const gauges = [
+    { label: 'HYD PRESSURE', val: (pressureNominal + 14 * Math.sin(time * 1.5 * rate)).toFixed(1), unit: 'BAR', max: 250 },
+    { label: 'CORE THERMAL', val: (64.2 + 5.8 * Math.cos(time * 0.9 * rate)).toFixed(1), unit: '°C', max: 100 },
+    { label: 'SUPPLY VOLT', val: (primaryVoltage + 1.4 * Math.sin(time * 2.8 * rate)).toFixed(2), unit: 'VDC', max: 60 },
+    { label: 'ANGULAR MOM', val: (1840 + 80 * Math.sin(time * 2.1 * rate)).toFixed(0), unit: 'RPM', max: 2500 }
+  ];
+  
+  for (let i = 0; i < numGauges; i++) {
+    const gy = y + 16 + i * gaugeH;
+    const g = gauges[i];
+    
+    ctx.fillStyle = '#829ab1';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(g.label, x + 6, gy + 1);
+    
+    ctx.fillStyle = '#00ffcc';
+    ctx.textAlign = 'right';
+    ctx.fillText(g.val + ' ' + g.unit, x + w - 6, gy + 1);
+    
+    const barY = gy + 11;
+    const barW = w - 12;
+    const barH = 4;
+    const numSegs = 14;
+    const segW = (barW - (numSegs - 1) * 2) / numSegs;
+    const ratio = Math.min(1, Math.max(0, parseFloat(g.val) / g.max));
+    const activeSegs = Math.round(ratio * numSegs);
+    
+    for (let s = 0; s < numSegs; s++) {
+      const sx = x + 6 + s * (segW + 2);
+      if (s < activeSegs) {
+        ctx.fillStyle = s >= numSegs - 2 ? '#ffb703' : '#00ffcc';
+      } else {
+        ctx.fillStyle = '#121a24';
+      }
+      ctx.fillRect(sx, barY, segW, barH);
+    }
+  }
+  ctx.restore();
+}
+
+function drawHexDump(ctx, x, y, w, h, baseAddr, frameCount) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('MEMORY REGISTERS: 0x' + baseAddr.toString(16).toUpperCase(), x + 6, y + 4);
+  
+  const rows = Math.min(7, Math.floor((h - 18) / 10.5));
+  for (let r = 0; r < rows; r++) {
+    const ry = y + 16 + r * 10.5;
+    const addr = (baseAddr + r * 8).toString(16).toUpperCase().padStart(4, '0');
+    
+    ctx.fillStyle = '#486581';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('0x' + addr, x + 6, ry);
+    
+    let bytesStr = '';
+    for (let b = 0; b < 3; b++) {
+      const seedVal = (baseAddr + r * 8 + b + Math.floor(frameCount / (18 + b * 6))) % 256;
+      bytesStr += seedVal.toString(16).toUpperCase().padStart(2, '0') + ' ';
+    }
+    
+    ctx.fillStyle = (r === 2 || r === 4) ? '#00ffcc' : '#e0e6ed';
+    ctx.fillText(bytesStr, x + 44, ry);
+    
+    ctx.fillStyle = (r % 3 === 0) ? '#ffb703' : '#00ffcc';
+    ctx.fillText(r % 2 === 0 ? 'NOM' : 'ACT', x + w - 24, ry);
+  }
+  
+  ctx.restore();
+}
+
+function drawStatusMatrix(ctx, x, y, w, h) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('SUBSYSTEM DIAGNOSTICS', x + 6, y + 4);
+  
+  const tags = [
+    { name: 'PWR', state: 'OK' },
+    { name: 'ENC', state: 'OK' },
+    { name: 'SYN', state: 'OK' },
+    { name: 'ISO', state: '01' },
+    { name: 'CAN', state: 'OK' },
+    { name: 'MOD', state: '04' },
+    { name: 'FLT', state: '00' },
+    { name: 'CAL', state: 'OK' }
+  ];
+  
+  const cols = 4;
+  const cellW = (w - 12) / cols;
+  const cellH = 12;
+  
+  for (let i = 0; i < tags.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = x + 6 + col * cellW;
+    const cy = y + 16 + row * (cellH + 2);
+    
+    ctx.fillStyle = '#101720';
+    ctx.fillRect(cx, cy, cellW - 2, cellH);
+    ctx.strokeStyle = '#243b53';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(cx, cy, cellW - 2, cellH);
+    
+    ctx.fillStyle = '#829ab1';
+    ctx.font = '6.5px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tags[i].name, cx + 2, cy + cellH / 2);
+    
+    ctx.fillStyle = '#00ffcc';
+    ctx.textAlign = 'right';
+    ctx.fillText(tags[i].state, cx + cellW - 4, cy + cellH / 2);
+  }
+  
+  ctx.restore();
+}
+
+function drawSpecTable(ctx, x, y, w, h, modelId, batchCode, material, baseTolerance) {
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  
+  ctx.fillStyle = '#00ffcc';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('ENGINEERING SPECIFICATIONS', x + 6, y + 4);
+  
+  const specs = [
+    ['PART IDENT', 'ACT-CORE-' + modelId],
+    ['BATCH LOT', batchCode],
+    ['BASE MAT', material.split(' ')[0] + ' ' + (material.split(' ')[1] || '')],
+    ['TOL CLASS', '±' + baseTolerance + ' mm'],
+    ['SURF SPEC', 'Ra 0.4 µm'],
+    ['BALANCING', 'ISO G2.5 DYN'],
+    ['LUBRICANT', 'KRYTOX 205'],
+    ['MAX SPEED', '3200 RPM']
+  ];
+  
+  const rowH = (h - 18) / specs.length;
+  for (let i = 0; i < specs.length; i++) {
+    const ry = y + 16 + i * rowH;
+    if (i % 2 === 1) {
+      ctx.fillStyle = 'rgba(25, 39, 52, 0.28)';
+      ctx.fillRect(x + 2, ry - 1, w - 4, rowH);
+    }
+    ctx.fillStyle = '#829ab1';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(specs[i][0], x + 6, ry);
+    
+    ctx.fillStyle = '#e0e6ed';
+    ctx.textAlign = 'right';
+    ctx.fillText(specs[i][1], x + w - 6, ry);
+  }
+  
+  ctx.restore();
+}
+
+let lastTime = performance.now();
+let simTime = 0;
+
+function animate(currentTime) {
+  window.__frames++;
+  
+  const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+  lastTime = currentTime;
+  
+  const density = parseInt(sliderDensity.value, 10);
+  const rate = parseFloat(sliderRate.value);
+  const subdiv = parseInt(sliderGrid.value, 10);
+  
+  simTime += dt * rate;
+  
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, width, height);
+  
+  drawBackgroundGrid(ctx, width, height, subdiv);
+  
+  const margin = 14;
+  const topHeaderH = 26;
+  const bottomFooterH = 20;
+  const innerY = margin + topHeaderH + 6;
+  const innerH = height - innerY - margin - bottomFooterH - 6;
+  
+  let colW = Math.max(190, Math.min(250, Math.floor(width * 0.20)));
+  let leftColX = margin;
+  let rightColX = width - margin - colW;
+  let centerColX = leftColX + colW + 8;
+  let centerColW = rightColX - centerColX - 8;
+  
+  // Header
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(margin, margin, width - margin * 2, topHeaderH);
+  ctx.strokeStyle = '#334e68';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(margin, margin, width - margin * 2, topHeaderH);
+  
+  drawHazardStrip(ctx, margin + 4, margin + 4, 38, topHeaderH - 8, 6);
+  
+  ctx.fillStyle = '#00ffcc';
+  ctx.font = 'bold 9.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('CAD-SPEC // CYCLIC ACTUATOR CORE // DWG: ' + modelId + '-' + batchCode, margin + 48, margin + topHeaderH / 2);
+  
+  if (width > 860) {
+    ctx.fillStyle = '#ffb703';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('STATUS: [ARMED & SYNCHRONIZED]  CAL-TOL: ±' + baseTolerance + 'mm', width / 2, margin + topHeaderH / 2);
+  }
+  
+  ctx.fillStyle = '#e0e6ed';
+  ctx.font = '8.5px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('T+ ' + simTime.toFixed(2) + 's | FR: ' + window.__frames, width - margin - 8, margin + topHeaderH / 2);
+  ctx.restore();
+  
+  // Footer
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(margin, height - margin - bottomFooterH, width - margin * 2, bottomFooterH);
+  ctx.strokeStyle = '#334e68';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(margin, height - margin - bottomFooterH, width - margin * 2, bottomFooterH);
+  
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('PROPRIETARY ENGINEERING SPECIFICATION - ISO 10110 / ASME Y14.5M - SYSTEM ARCHITECTURE V7.4', margin + 8, height - margin - bottomFooterH / 2);
+  
+  ctx.fillStyle = '#00ffcc';
+  ctx.textAlign = 'right';
+  ctx.fillText('SEED: 0x' + seedVal.toString(16).toUpperCase() + ' // SHEET 1/1', width - margin - 8, height - margin - bottomFooterH / 2);
+  ctx.restore();
+  
+  // Left Column Stack
+  let curY = innerY;
+  const leftRemaining = innerH;
+  const hazardH = 14;
+  const gaugesH = Math.min(125, Math.floor(leftRemaining * 0.28));
+  const hexH = Math.min(115, Math.floor(leftRemaining * 0.26));
+  const statusH = 46;
+  const barcodeH = 38;
+  
+  if (density >= 2) {
+    drawHazardStrip(ctx, leftColX, curY, colW, hazardH, 6, 'CAUTION: HIGH VOLTAGE BUS');
+    curY += hazardH + 6;
+  }
+  
+  drawSensorGauges(ctx, leftColX, curY, colW, gaugesH, simTime, rate, pressureNominal, primaryVoltage);
+  curY += gaugesH + 6;
+  
+  if (density >= 2) {
+    drawHexDump(ctx, leftColX, curY, colW, hexH, baseMemoryAddr, window.__frames);
+    curY += hexH + 6;
+  }
+  
+  if (density >= 3 && curY + statusH + barcodeH <= innerY + innerH) {
+    drawStatusMatrix(ctx, leftColX, curY, colW, statusH);
+    curY += statusH + 6;
+  }
+  
+  if (density >= 1 && curY + barcodeH <= innerY + innerH) {
+    drawBarcode(ctx, leftColX, curY, colW, barcodeH, '*SN-' + modelId + '-' + batchCode + '*', seedVal * 13);
+  }
+  
+  // Right Column Stack
+  curY = innerY;
+  const specH = Math.min(135, Math.floor(leftRemaining * 0.30));
+  const histH = Math.min(85, Math.floor(leftRemaining * 0.20));
+  const titleBlkH = 76;
+  const stampH = 56;
+  
+  if (density >= 2) {
+    drawHazardStrip(ctx, rightColX, curY, colW, hazardH, 6, 'WARNING: DUAL AXIS PINCH');
+    curY += hazardH + 6;
+  }
+  
+  drawSpecTable(ctx, rightColX, curY, colW, specH, modelId, batchCode, material, baseTolerance);
+  curY += specH + 6;
+  
+  if (density >= 3) {
+    drawToleranceHistogram(ctx, rightColX, curY, colW, histH, simTime, rate);
+    curY += histH + 6;
+  }
+  
+  const titleBlkY = innerY + innerH - titleBlkH;
+  if (density >= 2 && curY + stampH <= titleBlkY) {
+    drawQaStamp(ctx, rightColX + colW / 2, curY + stampH / 2, -0.12);
+  }
+  
+  drawTitleBlock(ctx, rightColX, titleBlkY, colW, titleBlkH, modelId, batchCode, specRev, material);
+  
+  // Center Column: Main CAD Viewport & Waveform Box
+  const waveBoxH = density >= 2 ? Math.min(80, Math.floor(innerH * 0.18)) : 0;
+  const cadBoxH = innerH - (waveBoxH > 0 ? waveBoxH + 8 : 0);
+  
+  ctx.save();
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(centerColX, innerY, centerColW, cadBoxH);
+  ctx.strokeStyle = '#334e68';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(centerColX, innerY, centerColW, cadBoxH);
+  
+  // Corner Crosshairs for CAD Viewport
+  const tickLen = 6;
+  ctx.strokeStyle = '#00ffcc';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(centerColX, innerY + tickLen); ctx.lineTo(centerColX, innerY); ctx.lineTo(centerColX + tickLen, innerY);
+  ctx.moveTo(centerColX + centerColW - tickLen, innerY); ctx.lineTo(centerColX + centerColW, innerY); ctx.lineTo(centerColX + centerColW, innerY + tickLen);
+  ctx.moveTo(centerColX, innerY + cadBoxH - tickLen); ctx.lineTo(centerColX, innerY + cadBoxH); ctx.lineTo(centerColX + tickLen, innerY + cadBoxH);
+  ctx.moveTo(centerColX + centerColW - tickLen, innerY + cadBoxH); ctx.lineTo(centerColX + centerColW, innerY + cadBoxH); ctx.lineTo(centerColX + centerColW, innerY + cadBoxH - tickLen);
+  ctx.stroke();
+  
+  const cx = centerColX + centerColW / 2;
+  const cy = innerY + cadBoxH / 2;
+  const maxR = Math.min(centerColW, cadBoxH) * 0.43;
+  
+  // Reference Ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, maxR * 1.04, 0, Math.PI * 2);
+  ctx.strokeStyle = '#182432';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  
+  // Outer Gear Ring
+  const angleGear = simTime * 0.22;
+  drawGear(ctx, cx, cy, maxR * 0.88, maxR * 0.94, maxR, gearTeeth, angleGear, 'rgba(0, 255, 204, 0.03)', '#00ffcc');
+  
+  // Azimuth Dial
+  const angleDial = -simTime * 0.12;
+  drawAzimuthDial(ctx, cx, cy, maxR * 0.82, angleDial, density);
+  
+  // Satellite Pinions
+  const orbitR = maxR * 0.54;
+  const satR = maxR * 0.15;
+  const angleOrbit = simTime * 0.35;
+  drawSatellites(ctx, cx, cy, orbitR, satelliteCount, angleOrbit, satR, density);
+  
+  // Structural Spokes
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angleGear * 0.5);
+  ctx.strokeStyle = '#243b53';
+  ctx.lineWidth = 1;
+  for (let sp = 0; sp < spokeCount; sp++) {
+    const sa = (sp * Math.PI * 2) / spokeCount;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(sa - 0.05) * (maxR * 0.32), Math.sin(sa - 0.05) * (maxR * 0.32));
+    ctx.lineTo(Math.cos(sa - 0.02) * (maxR * 0.72), Math.sin(sa - 0.02) * (maxR * 0.72));
+    ctx.moveTo(Math.cos(sa + 0.05) * (maxR * 0.32), Math.sin(sa + 0.05) * (maxR * 0.32));
+    ctx.lineTo(Math.cos(sa + 0.02) * (maxR * 0.72), Math.sin(sa + 0.02) * (maxR * 0.72));
+    ctx.stroke();
+  }
+  ctx.restore();
+  
+  // Central Reticle
+  const sweepAngle = simTime * 1.6;
+  drawReticle(ctx, cx, cy, maxR * 0.24, sweepAngle, density);
+  
+  // Dimension Callouts
+  if (density >= 3) {
+    drawDimensionLeader(ctx, cx + maxR * 0.94, cy, cx + maxR * 1.08, cy - 25, 45, 'Ø ' + (maxR * 2 * 0.85).toFixed(2) + ' mm', 'PITCH CIRCLE (REF)');
+    drawDimensionLeader(ctx, cx - maxR * 0.24, cy - maxR * 0.24, cx - maxR * 0.55, cy - maxR * 0.55, -45, 'Ø 45.00 H7', '+0.025 / 0.000');
+  }
+  if (density >= 4) {
+    drawDimensionLeader(ctx, cx + Math.cos(angleOrbit) * orbitR, cy + Math.sin(angleOrbit) * orbitR, cx + Math.cos(angleOrbit) * orbitR + 25, cy + Math.sin(angleOrbit) * orbitR + 25, 35, 'P.C.D. ' + (orbitR * 2).toFixed(1) + ' mm', satelliteCount + 'x SATELLITE');
+  }
+  
+  // CAD Viewport Subtext
+  ctx.fillStyle = '#829ab1';
+  ctx.font = '7.5px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('PROJECTION: FIRST ANGLE // METRIC', centerColX + 8, innerY + 12);
+  ctx.textAlign = 'right';
+  ctx.fillText('ROT_AZ: ' + ((simTime * 24) % 360).toFixed(1) + '° // VEL: ' + (rate * 125).toFixed(0) + ' RPM', centerColX + centerColW - 8, innerY + 12);
+  
+  ctx.restore();
+  
+  // Bottom Waveform Box in Center Column
+  if (waveBoxH > 0) {
+    const waveY = innerY + cadBoxH + 8;
+    drawWaveformBox(ctx, centerColX, waveY, centerColW, waveBoxH, simTime, rate, waveformHarmonic);
+  }
+  
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risograph Halftone Print Effect v2</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0f;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+    #ui {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      background: rgba(12, 14, 20, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      padding: 16px 18px;
+      color: #f2f3f8;
+      font-size: 13px;
+      z-index: 100;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+      width: 250px;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .title {
+      font-weight: 700;
+      font-size: 13.5px;
+      letter-spacing: -0.2px;
+      margin-bottom: 14px;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .title::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #ff2a75;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #ff2a75;
+    }
+    .control {
+      margin-bottom: 12px;
+    }
+    .control:last-of-type {
+      margin-bottom: 8px;
+    }
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: #9fa5bc;
+    }
+    .val {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-weight: 600;
+      color: #ffffff;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 3px;
+      outline: none;
+      margin: 6px 0;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: #ff2a75;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: #ff2a75;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    }
+    .hint {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      color: #8b90a6;
+      text-align: center;
+      line-height: 1.4;
+    }
+    .hint b {
+      color: #f0f2fb;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div id="ui">
+    <div class="title">Risograph Halftone Print Effect v2</div>
+    
+    <div class="control">
+      <div class="label-row">
+        <span class="label">Registration Drift</span>
+        <span class="val" id="val-drift">3.5 px</span>
+      </div>
+      <input type="range" id="slider-drift" min="0" max="8" step="0.1" value="3.5">
+    </div>
+
+    <div class="control">
+      <div class="label-row">
+        <span class="label">Roller Starvation</span>
+        <span class="val" id="val-starvation">0.45</span>
+      </div>
+      <input type="range" id="slider-starvation" min="0" max="1" step="0.02" value="0.45">
+    </div>
+
+    <div class="control">
+      <div class="label-row">
+        <span class="label">Ink Dryness</span>
+        <span class="val" id="val-dryness">0.60</span>
+      </div>
+      <input type="range" id="slider-dryness" min="0" max="1" step="0.02" value="0.60">
+    </div>
+
+    <div class="hint">Press <b>B</b> for Split View &bull; <b>H</b> to Hide UI</div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    function getSeed() {
+      const p = new URLSearchParams(window.location.search).get('seed');
+      const n = parseInt(p, 10);
+      return isNaN(n) ? 1 : n;
+    }
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const seed = getSeed();
+    const rng = mulberry32(seed);
+
+    // Initial phase constants derived deterministically from PRNG
+    const phasePink = rng() * 6.2831853;
+    const phaseYellow = rng() * 6.2831853;
+    const phaseBlue = rng() * 6.2831853;
+    const initialBuildingAngle = (rng() - 0.5) * 0.15;
+
+    const canvas = document.getElementById('canvas');
+    const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false });
+    if (!gl) {
+      throw new Error('WebGL2 is not supported on this device/browser');
+    }
+
+    // Offscreen 2D canvas for procedural architectural line-art & zine vector layout
+    const offCanvas = document.createElement('canvas');
+    const offCtx = offCanvas.getContext('2d', { willReadFrequently: false });
+
+    // WebGL Shaders
+    const vsSource = `#version 300 es
+    in vec2 a_position;
+    out vec2 v_uv;
+
+    void main() {
+        v_uv = vec2(a_position.x * 0.5 + 0.5, 0.5 - a_position.y * 0.5);
+        gl_Position = vec4(a_position, 0.0, 1.0);
+    }`;
+
+    const fsSource = `#version 300 es
+    precision highp float;
+
+    in vec2 v_uv;
+    out vec4 fragColor;
+
+    uniform sampler2D u_sourceTexture;
+    uniform vec2 u_resolution;
+    uniform float u_time;
+    uniform float u_halftone_scale;
+    uniform float u_registration_drift;
+    uniform float u_roller_starvation;
+    uniform float u_ink_dryness;
+    uniform float u_feed_stutter;
+    uniform float u_feed_offset;
+    uniform float u_show_split;
+    uniform float u_split_ratio;
+    uniform float u_seed;
+
+    // Risograph Spot Inks (Fluorescent Pink, Sunflower Yellow, Federal Blue)
+    const vec3 INK_PINK   = vec3(1.00, 0.16, 0.46); // Fluo Pink (#ff2a75)
+    const vec3 INK_YELLOW = vec3(1.00, 0.78, 0.00); // Sunflower (#ffc700)
+    const vec3 INK_BLUE   = vec3(0.08, 0.28, 0.78); // Federal Blue (#1447c7)
+
+    // Standard Authentic Screen Angles (15°, 45°, 75°)
+    const float ANG_PINK   = 0.26179939; // 15 deg
+    const float ANG_YELLOW = 0.78539816; // 45 deg
+    const float ANG_BLUE   = 1.30899694; // 75 deg
+
+    float hash(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21) + u_seed * 0.173);
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+    }
+
+    float vnoise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    // Mechanical multi-drum registration drift with periodic paper feed stutter
+    vec2 getDrift(int plateIndex, float time, float driftAmt, float feedStutter) {
+        if (driftAmt <= 0.001) return vec2(0.0);
+        float t = time * 0.75;
+        float stutterY = feedStutter * driftAmt * 0.85;
+
+        if (plateIndex == 0) { // Pink
+            return vec2(
+                driftAmt * (sin(t * 0.95 + 1.2) * 1.5 + cos(t * 0.38) * 0.8),
+                driftAmt * (cos(t * 1.15 + 0.5) * 1.4 - sin(t * 0.55) * 0.7) + stutterY * 1.1
+            );
+        } else if (plateIndex == 1) { // Yellow
+            return vec2(
+                driftAmt * (cos(t * 0.82 + 3.1) * 1.7 + sin(t * 0.42) * 0.9),
+                driftAmt * (sin(t * 1.05 + 2.3) * 1.3 + cos(t * 0.62) * 0.8) - stutterY * 0.7
+            );
+        } else { // Blue
+            return vec2(
+                driftAmt * (sin(t * 0.72 + 4.7) * 1.6 - cos(t * 0.48) * 1.1),
+                driftAmt * (cos(t * 0.88 + 5.1) * 1.6 + sin(t * 0.35) * 0.7) + stutterY * 0.9
+            );
+        }
+    }
+
+    // Directional roller ink-starvation banding calculation along paper feed axis
+    float getRollerStarvation(vec2 p, float feedOffset, float starvationAmt, float localInkDensity) {
+        if (starvationAmt <= 0.001) return 1.0;
+        
+        // Drum circumference banding
+        float drumCycle = (p.y + feedOffset) * 0.045;
+        float drumBand = sin(drumCycle) * 0.5 + 0.5;
+        
+        // Fine roller striations and horizontal starvation chatter
+        float striations = sin((p.y + feedOffset) * 0.38 + vnoise(vec2(p.y * 0.04, p.x * 0.003)) * 3.5);
+        striations = smoothstep(-0.3, 0.8, striations);
+        
+        // Starvation occurs in heavy ink coverage zones where ink reservoir is strained
+        float starvationMod = (drumBand * 0.45 + striations * 0.55);
+        float depletion = starvationAmt * starvationMod * smoothstep(0.15, 0.75, localInkDensity) * 0.42;
+        
+        return clamp(1.0 - depletion, 0.1, 1.0);
+    }
+
+    // Halftone dot calculation with clean negative space & fiber bleed physics
+    float getPlateDot(vec2 p, float angleRad, float density, float cellSize, float noiseGrain, float dryness) {
+        // Fix for negative space: strictly clean unprinted paper background
+        if (density < 0.02) return 0.0;
+        
+        // Rotate grid coordinates
+        float cosA = cos(angleRad);
+        float sinA = sin(angleRad);
+        vec2 rotP = vec2(cosA * p.x - sinA * p.y, sinA * p.x + cosA * p.y);
+        
+        // Grid space
+        vec2 gridUV = rotP / cellSize;
+        vec2 cellCenter = floor(gridUV) + 0.5;
+        vec2 delta = gridUV - cellCenter;
+        float dist = length(delta);
+        
+        // High solid density merges into continuous solid plate (preserves typography)
+        if (density > 0.90) {
+            float solidBridge = (density - 0.90) / 0.10;
+            if (dist < 0.707 + solidBridge * 0.3) return 1.0;
+        }
+        
+        // Area law: radius scales with sqrt(density)
+        float targetR = sqrt(density) * 0.71;
+        
+        // Wet ink has sharp crisp boundaries; dried ink feathers into fibrous cellulose pores
+        float px = 1.0 / cellSize;
+        float fiberWicking = mix(0.5, 2.2, dryness) * (noiseGrain * 0.7 + 0.3);
+        float bleed = px * fiberWicking;
+        
+        return 1.0 - smoothstep(targetR - bleed, targetR + bleed, dist);
+    }
+
+    void main() {
+        vec2 screenPos = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
+        
+        // Before/After Split Screen
+        if (u_show_split > 0.5) {
+            float splitX = u_resolution.x * u_split_ratio;
+            float distToSplit = screenPos.x - splitX;
+            
+            // Thin divider line
+            if (abs(distToSplit) < 1.5) {
+                fragColor = vec4(0.10, 0.12, 0.16, 1.0);
+                return;
+            } else if (abs(distToSplit) < 0.75) {
+                fragColor = vec4(0.96, 0.96, 0.98, 1.0);
+                return;
+            }
+            
+            // Left half shows original vector artwork
+            if (screenPos.x < splitX) {
+                vec3 original = texture(u_sourceTexture, screenPos / u_resolution).rgb;
+                fragColor = vec4(original, 1.0);
+                return;
+            }
+        }
+        
+        float cellSize = u_resolution.y / u_halftone_scale;
+        
+        // Plate 1: Fluorescent Pink
+        vec2 driftPink = getDrift(0, u_time, u_registration_drift, u_feed_stutter);
+        vec2 uvPink = clamp((screenPos + driftPink) / u_resolution, 0.0, 1.0);
+        vec3 srcPink = texture(u_sourceTexture, uvPink).rgb;
+        float densityPink = clamp((1.0 - srcPink.g) - (1.0 - srcPink.r) * 0.25, 0.0, 1.0);
+        float dotPink = getPlateDot(screenPos + driftPink, ANG_PINK, densityPink, cellSize, hash(screenPos + driftPink), u_ink_dryness);
+        float starvationPink = getRollerStarvation(screenPos + driftPink, u_feed_offset, u_roller_starvation, densityPink);
+        float inkPink = dotPink * 0.96 * starvationPink;
+        
+        // Plate 2: Sunflower Yellow
+        vec2 driftYellow = getDrift(1, u_time, u_registration_drift, u_feed_stutter);
+        vec2 uvYellow = clamp((screenPos + driftYellow) / u_resolution, 0.0, 1.0);
+        vec3 srcYellow = texture(u_sourceTexture, uvYellow).rgb;
+        float densityYellow = clamp((1.0 - srcYellow.b) - (1.0 - srcYellow.g) * 0.35, 0.0, 1.0);
+        float dotYellow = getPlateDot(screenPos + driftYellow, ANG_YELLOW, densityYellow, cellSize, hash(screenPos + driftYellow), u_ink_dryness);
+        float starvationYellow = getRollerStarvation(screenPos + driftYellow, u_feed_offset, u_roller_starvation, densityYellow);
+        float inkYellow = dotYellow * 0.96 * starvationYellow;
+        
+        // Plate 3: Federal Blue
+        vec2 driftBlue = getDrift(2, u_time, u_registration_drift, u_feed_stutter);
+        vec2 uvBlue = clamp((screenPos + driftBlue) / u_resolution, 0.0, 1.0);
+        vec3 srcBlue = texture(u_sourceTexture, uvBlue).rgb;
+        float densityBlue = clamp(1.0 - srcBlue.r, 0.0, 1.0);
+        float dotBlue = getPlateDot(screenPos + driftBlue, ANG_BLUE, densityBlue, cellSize, hash(screenPos + driftBlue), u_ink_dryness);
+        float starvationBlue = getRollerStarvation(screenPos + driftBlue, u_feed_offset, u_roller_starvation, densityBlue);
+        float inkBlue = dotBlue * 0.96 * starvationBlue;
+        
+        // Subtractive ink filtering
+        vec3 transPink   = mix(vec3(1.0), INK_PINK, inkPink);
+        vec3 transYellow = mix(vec3(1.0), INK_YELLOW, inkYellow);
+        vec3 transBlue   = mix(vec3(1.0), INK_BLUE, inkBlue);
+        vec3 inkComposite = transPink * transYellow * transBlue;
+        
+        // Warm natural cream uncoated stock (Munken Pure / Risograph paper substrate)
+        vec3 paperBase = vec3(0.975, 0.962, 0.938);
+        
+        // Procedural tactile paper grain & fibrous flecks
+        float g1 = hash(screenPos);
+        float g2 = vnoise(vec2(screenPos.x * 0.35, screenPos.y * 1.8)); // elongated fiber lines
+        float g3 = vnoise(screenPos * 0.12);
+        float grain = (g1 * 0.45 + g2 * 0.35 + g3 * 0.20);
+        
+        // Modulate paper substrate by fiber grain
+        vec3 paper = paperBase * (1.0 - (grain - 0.5) * 0.14);
+        
+        // Final print composite
+        vec3 finalColor = paper * inkComposite;
+        
+        // Wet ink sheen vs dried matte paper absorption
+        float totalInk = clamp(inkPink + inkYellow + inkBlue, 0.0, 3.0);
+        
+        // Wet ink: surface specular sheen
+        float wetSheen = (1.0 - u_ink_dryness) * 0.08 * pow(clamp(totalInk * 0.45, 0.0, 1.0), 2.0);
+        finalColor += vec3(wetSheen);
+        
+        // Dried ink: capillary absorption where paper tooth bites into the ink layer
+        float dryAbsorption = u_ink_dryness * (grain - 0.5) * 0.12 * smoothstep(0.1, 0.8, totalInk);
+        finalColor -= vec3(dryAbsorption);
+        
+        finalColor = clamp(finalColor, 0.0, 1.0);
+        fragColor = vec4(finalColor, 1.0);
+    }`;
+
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const info = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error('Shader compilation failed: ' + info);
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vsSrc, fsSrc) {
+      const vs = createShader(gl, gl.VERTEX_SHADER, vsSrc);
+      const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSrc);
+      const program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const info = gl.getProgramInfoLog(program);
+        gl.deleteProgram(program);
+        throw new Error('Program linking failed: ' + info);
+      }
+      return program;
+    }
+
+    const program = createProgram(gl, vsSource, fsSource);
+
+    // Uniform locations
+    const uSourceLoc = gl.getUniformLocation(program, 'u_sourceTexture');
+    const uResLoc = gl.getUniformLocation(program, 'u_resolution');
+    const uTimeLoc = gl.getUniformLocation(program, 'u_time');
+    const uScaleLoc = gl.getUniformLocation(program, 'u_halftone_scale');
+    const uDriftLoc = gl.getUniformLocation(program, 'u_registration_drift');
+    const uStarvationLoc = gl.getUniformLocation(program, 'u_roller_starvation');
+    const uDrynessLoc = gl.getUniformLocation(program, 'u_ink_dryness');
+    const uFeedStutterLoc = gl.getUniformLocation(program, 'u_feed_stutter');
+    const uFeedOffsetLoc = gl.getUniformLocation(program, 'u_feed_offset');
+    const uSplitLoc = gl.getUniformLocation(program, 'u_show_split');
+    const uSplitRatioLoc = gl.getUniformLocation(program, 'u_split_ratio');
+    const uSeedLoc = gl.getUniformLocation(program, 'u_seed');
+
+    // Fullscreen quad VAO
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    const positions = new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+      -1,  1,
+       1, -1,
+       1,  1,
+    ]);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const posLoc = gl.getAttribLocation(program, 'a_position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // WebGL texture for offscreen canvas
+    const sourceTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    // UI controls state
+    const sliderDrift = document.getElementById('slider-drift');
+    const sliderStarvation = document.getElementById('slider-starvation');
+    const sliderDryness = document.getElementById('slider-dryness');
+
+    const valDrift = document.getElementById('val-drift');
+    const valStarvation = document.getElementById('val-starvation');
+    const valDryness = document.getElementById('val-dryness');
+
+    let registrationDrift = parseFloat(sliderDrift.value);
+    let rollerStarvation = parseFloat(sliderStarvation.value);
+    let inkDryness = parseFloat(sliderDryness.value);
+    let showSplit = false;
+    let splitRatio = 0.5;
+    let uiVisible = true;
+    let isDragging = false;
+    let pointerX = 0;
+    let pointerY = 0;
+
+    sliderDrift.addEventListener('input', (e) => {
+      registrationDrift = parseFloat(e.target.value);
+      valDrift.textContent = registrationDrift.toFixed(1) + ' px';
+    });
+
+    sliderStarvation.addEventListener('input', (e) => {
+      rollerStarvation = parseFloat(e.target.value);
+      valStarvation.textContent = rollerStarvation.toFixed(2);
+    });
+
+    sliderDryness.addEventListener('input', (e) => {
+      inkDryness = parseFloat(e.target.value);
+      valDryness.textContent = inkDryness.toFixed(2);
+    });
+
+    // Keyboard controls: H for UI, B for Before/After Split
+    const ui = document.getElementById('ui');
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        uiVisible = !uiVisible;
+        ui.style.display = uiVisible ? 'block' : 'none';
+      } else if (e.key === 'b' || e.key === 'B') {
+        showSplit = !showSplit;
+      }
+    });
+
+    // Pointer interaction for split divider & reactive visual tilt
+    window.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('#ui')) return;
+      if (showSplit) {
+        const x = e.clientX / window.innerWidth;
+        if (Math.abs(x - splitRatio) < 0.08 || e.pointerType === 'touch') {
+          isDragging = true;
+          splitRatio = Math.max(0.02, Math.min(0.98, x));
+        }
+      }
+      pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+      pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+      pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+      if (!isDragging || !showSplit) return;
+      const x = e.clientX / window.innerWidth;
+      splitRatio = Math.max(0.02, Math.min(0.98, x));
+    });
+
+    window.addEventListener('pointerup', () => { isDragging = false; });
+    window.addEventListener('pointercancel', () => { isDragging = false; });
+
+    // Canvas resize handling (capped dpr = 2)
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.floor(window.innerWidth * dpr);
+      const h = Math.floor(window.innerHeight * dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        gl.viewport(0, 0, w, h);
+
+        offCanvas.width = w;
+        offCanvas.height = h;
+
+        gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      }
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Procedural Brutalist Architectural Line-Art & Zine Cover Specimen
+    function drawTestScene(ctx, w, h, time) {
+      ctx.save();
+
+      // 1. Pristine White Paper Background (Strictly no halftone stipples in negative space)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      const m = Math.floor(Math.min(w, h) * 0.038);
+      const contentW = w - 2 * m;
+      const contentH = h - 2 * m;
+
+      // 2. Editorial Frame & Technical Markings
+      ctx.strokeStyle = '#111420';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(m, m, contentW, contentH);
+
+      // Corner registration crosshairs & trim marks
+      const cSize = Math.floor(m * 0.55);
+      const corners = [
+        [m, m], [w - m, m], [m, h - m], [w - m, h - m]
+      ];
+      ctx.lineWidth = 1;
+      corners.forEach(([cx, cy]) => {
+        ctx.beginPath();
+        ctx.moveTo(cx - cSize, cy); ctx.lineTo(cx + cSize, cy);
+        ctx.moveTo(cx, cy - cSize); ctx.lineTo(cx, cy + cSize);
+        ctx.stroke();
+      });
+
+      // Top Editorial Header
+      const headerY = m + Math.floor(h * 0.022);
+      const headerFontSize = Math.floor(h * 0.052);
+      ctx.font = `900 ${headerFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = '#111420';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('BRUTALISM // MONOLITH', m + 14, headerY);
+
+      const subFontSize = Math.max(9, Math.floor(h * 0.017));
+      ctx.font = `700 ${subFontSize}px monospace, ui-monospace, sans-serif`;
+      ctx.fillStyle = '#1447c7'; // Federal Blue
+      ctx.fillText('ZINE ISSUE 04 • STRUCTURE, MASS & NEGATIVE VOID • ELEVATION 45°', m + 16, headerY + headerFontSize + 3);
+
+      // Top-right Stamp Badge
+      const badgeW = Math.floor(w * 0.135);
+      const badgeH = Math.floor(h * 0.040);
+      const badgeX = w - m - badgeW - 14;
+      const badgeY = headerY + 4;
+      ctx.fillStyle = '#ff2a75'; // Fluo Pink
+      ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `800 ${Math.floor(badgeH * 0.52)}px monospace, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('PASS: 3-COLOR', badgeX + badgeW * 0.5, badgeY + badgeH * 0.52);
+
+      // Subtle architectural layout grid
+      ctx.strokeStyle = 'rgba(20, 71, 199, 0.1)';
+      ctx.lineWidth = 1;
+      const gridStep = Math.floor(contentH * 0.1);
+      ctx.beginPath();
+      for (let gy = m + Math.floor(h * 0.12); gy < h - m - Math.floor(h * 0.08); gy += gridStep) {
+        ctx.moveTo(m + 10, gy); ctx.lineTo(w - m - 10, gy);
+      }
+      ctx.stroke();
+
+      // 3. Graphic Sun / Backdrop Elements Behind Architectural Hero
+      const centerIsoX = w * 0.51 + pointerX * 18;
+      const centerIsoY = h * 0.55 + pointerY * 14;
+      const sunR = Math.floor(h * 0.25);
+      const sunX = w * 0.44;
+      const sunY = h * 0.42;
+
+      // Large Fluo Pink Rising Sun with linocut horizontal knockout lines
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff2a75';
+      ctx.fill();
+
+      // Woodcut linework across backdrop sun
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let ly = sunY - sunR + 12; ly < sunY + sunR; ly += 14) {
+        const dy = ly - sunY;
+        const dx = Math.sqrt(Math.max(0, sunR * sunR - dy * dy));
+        ctx.moveTo(sunX - dx, ly);
+        ctx.lineTo(sunX + dx, ly);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Sunflower Yellow Diagonal Framing Wedge
+      ctx.save();
+      ctx.fillStyle = '#ffc700';
+      ctx.beginPath();
+      ctx.moveTo(sunX - sunR * 0.8, h - m - Math.floor(h * 0.08));
+      ctx.lineTo(sunX + sunR * 1.5, m + Math.floor(h * 0.12));
+      ctx.lineTo(sunX + sunR * 1.8, m + Math.floor(h * 0.12));
+      ctx.lineTo(sunX - sunR * 0.5, h - m - Math.floor(h * 0.08));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // 4. Procedural Brutalist Isometric Monolith with Linocut Cross-Hatching
+      function iso(x, y, z) {
+        return {
+          x: centerIsoX + (x - y) * 0.866025,
+          y: centerIsoY + (x + y) * 0.5 - z
+        };
+      }
+
+      // Periodic architectural sun / shadow sweep
+      const sunAngle = (time * 0.35 + initialBuildingAngle) % (Math.PI * 2);
+      const sunCos = Math.cos(sunAngle);
+
+      function drawBlock(x, y, z, wB, dB, hB, isCantilever) {
+        const p000 = iso(x, y, z);
+        const p100 = iso(x + wB, y, z);
+        const p110 = iso(x + wB, y + dB, z);
+        const p010 = iso(x, y + dB, z);
+
+        const p001 = iso(x, y, z + hB);
+        const p101 = iso(x + wB, y, z + hB);
+        const p111 = iso(x + wB, y + dB, z + hB);
+        const p011 = iso(x, y + dB, z + hB);
+
+        // Cast shadow on ground if cantilever
+        if (isCantilever) {
+          ctx.fillStyle = '#111628';
+          ctx.beginPath();
+          ctx.moveTo(p000.x, p000.y);
+          ctx.lineTo(p100.x, p100.y);
+          ctx.lineTo(p110.x, p110.y);
+          ctx.lineTo(p010.x, p010.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // Left face
+        const leftShadow = sunCos > 0.1;
+        ctx.fillStyle = leftShadow ? '#1447c7' : '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(p000.x, p000.y);
+        ctx.lineTo(p010.x, p010.y);
+        ctx.lineTo(p011.x, p011.y);
+        ctx.lineTo(p001.x, p001.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#111420';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Architectural linocut hatching on Left Face
+        if (leftShadow) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(p000.x, p000.y);
+          ctx.lineTo(p010.x, p010.y);
+          ctx.lineTo(p011.x, p011.y);
+          ctx.lineTo(p001.x, p001.y);
+          ctx.closePath();
+          ctx.clip();
+
+          ctx.strokeStyle = '#111628';
+          ctx.lineWidth = 1.5;
+          const minX = Math.min(p000.x, p010.x, p011.x, p001.x);
+          const maxX = Math.max(p000.x, p010.x, p011.x, p001.x);
+          const minY = Math.min(p000.y, p010.y, p011.y, p001.y);
+          const maxY = Math.max(p000.y, p010.y, p011.y, p001.y);
+          ctx.beginPath();
+          for (let d = -maxY; d < maxX; d += 8) {
+            ctx.moveTo(d, minY - 10);
+            ctx.lineTo(d + (maxY - minY), maxY + 10);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Right face
+        const rightShadow = sunCos <= 0.1;
+        ctx.fillStyle = rightShadow ? '#111628' : '#ffc700';
+        ctx.beginPath();
+        ctx.moveTo(p010.x, p010.y);
+        ctx.lineTo(p110.x, p110.y);
+        ctx.lineTo(p111.x, p111.y);
+        ctx.lineTo(p011.x, p011.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#111420';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Architectural linocut hatching on Right Face
+        if (rightShadow) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(p010.x, p010.y);
+          ctx.lineTo(p110.x, p110.y);
+          ctx.lineTo(p111.x, p111.y);
+          ctx.lineTo(p011.x, p011.y);
+          ctx.closePath();
+          ctx.clip();
+
+          ctx.strokeStyle = '#080c18';
+          ctx.lineWidth = 1.5;
+          const minX = Math.min(p010.x, p110.x, p111.x, p011.x);
+          const maxX = Math.max(p010.x, p110.x, p111.x, p011.x);
+          const minY = Math.min(p010.y, p110.y, p111.y, p011.y);
+          const maxY = Math.max(p010.y, p110.y, p111.y, p011.y);
+          ctx.beginPath();
+          for (let d = -maxY; d < maxX; d += 8) {
+            ctx.moveTo(d + (maxY - minY), minY - 10);
+            ctx.lineTo(d, maxY + 10);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Top face
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(p001.x, p001.y);
+        ctx.lineTo(p101.x, p101.y);
+        ctx.lineTo(p111.x, p111.y);
+        ctx.lineTo(p011.x, p011.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#111420';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      const sc = h * 0.0022;
+
+      // 1. Plinth Foundation
+      drawBlock(-90 * sc, -90 * sc, 0, 180 * sc, 180 * sc, 20 * sc, false);
+      drawBlock(-75 * sc, -75 * sc, 20 * sc, 150 * sc, 150 * sc, 15 * sc, false);
+
+      // 2. Central Core Shaft
+      drawBlock(-45 * sc, -45 * sc, 35 * sc, 90 * sc, 90 * sc, 140 * sc, false);
+
+      // Recessed louvers on core shaft
+      ctx.fillStyle = '#111628';
+      for (let lz = 50 * sc; lz < 155 * sc; lz += 22 * sc) {
+        const sP1 = iso(-45 * sc, -35 * sc, lz);
+        const sP2 = iso(-45 * sc, -15 * sc, lz);
+        const sP3 = iso(-45 * sc, -15 * sc, lz + 12 * sc);
+        const sP4 = iso(-45 * sc, -35 * sc, lz + 12 * sc);
+        ctx.beginPath();
+        ctx.moveTo(sP1.x, sP1.y);
+        ctx.lineTo(sP2.x, sP2.y);
+        ctx.lineTo(sP3.x, sP3.y);
+        ctx.lineTo(sP4.x, sP4.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // 3. Cantilevered Upper Observation Wing
+      drawBlock(-80 * sc, -25 * sc, 115 * sc, 120 * sc, 80 * sc, 45 * sc, true);
+
+      // 4. Skyline Crown
+      drawBlock(-35 * sc, -35 * sc, 175 * sc, 70 * sc, 70 * sc, 30 * sc, false);
+
+      // 5. Auxiliary Elevator Pylon & Skyway
+      drawBlock(55 * sc, -60 * sc, 0, 30 * sc, 30 * sc, 190 * sc, false);
+      drawBlock(10 * sc, -50 * sc, 130 * sc, 50 * sc, 15 * sc, 18 * sc, true);
+
+      // Technical Annotations (Dimensions & Section Marker)
+      ctx.save();
+      ctx.strokeStyle = '#ff2a75';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 4]);
+
+      const dim1 = iso(-80 * sc, 60 * sc, 115 * sc);
+      const dim2 = iso(40 * sc, 60 * sc, 115 * sc);
+      ctx.beginPath();
+      ctx.moveTo(dim1.x, dim1.y);
+      ctx.lineTo(dim2.x, dim2.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#ff2a75';
+      ctx.font = `700 ${Math.max(8, Math.floor(h * 0.015))}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText('◄ 48.0 M CANTILEVER ►', (dim1.x + dim2.x) * 0.5, dim1.y - 8);
+
+      const secP = iso(-45 * sc, -45 * sc, 220 * sc);
+      ctx.beginPath();
+      ctx.arc(secP.x, secP.y, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = '#111420';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(secP.x - 14, secP.y); ctx.lineTo(secP.x + 14, secP.y);
+      ctx.stroke();
+      ctx.fillStyle = '#111420';
+      ctx.font = '800 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('A', secP.x, secP.y - 6);
+      ctx.fillText('04', secP.x, secP.y + 6);
+      ctx.restore();
+
+      // 5. Giant Stencil Display Title Overprint
+      const titleY = h * 0.73;
+      const mainTitleSize = Math.floor(h * 0.092);
+      ctx.font = `900 ${mainTitleSize}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+
+      const tX = m + 20;
+
+      // Plate registration offset drop shadows in vector layer
+      ctx.fillStyle = '#ffc700';
+      ctx.fillText('CONCRETE / VOID', tX + 3, titleY + 3);
+      ctx.fillStyle = '#ff2a75';
+      ctx.fillText('CONCRETE / VOID', tX - 2, titleY - 2);
+      ctx.fillStyle = '#111420';
+      ctx.fillText('CONCRETE / VOID', tX, titleY);
+
+      // Subtitle
+      ctx.font = `700 ${Math.max(10, Math.floor(h * 0.019))}px monospace`;
+      ctx.fillStyle = '#1447c7';
+      ctx.fillText('MASSIVE FORMWORK • CELLULAR AGGREGATE • 1968–1974', tX, titleY + mainTitleSize + 4);
+
+      // Calibration Swatch Strip
+      const swatchColors = ['#111420', '#1447c7', '#ff2a75', '#ffc700', '#0e5a3c', '#551a8b', '#ffffff'];
+      const sW = Math.floor(w * 0.024);
+      const sH = Math.floor(h * 0.025);
+      const sStartX = w - m - (swatchColors.length * (sW + 4)) - 10;
+      const sY = titleY + 12;
+      for (let i = 0; i < swatchColors.length; i++) {
+        ctx.fillStyle = swatchColors[i];
+        ctx.fillRect(sStartX + i * (sW + 4), sY, sW, sH);
+        ctx.strokeStyle = '#111420';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sStartX + i * (sW + 4), sY, sW, sH);
+      }
+      ctx.fillStyle = '#111420';
+      ctx.font = `600 ${Math.max(8, Math.floor(h * 0.013))}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('SPOT DENSITY MATRIX', sStartX, sY - 3);
+
+      // 6. Kinetic Marquee Ticker Tape at bottom
+      const botBarH = Math.floor(contentH * 0.055);
+      const botBarY = h - m - botBarH;
+      ctx.fillStyle = '#111420';
+      ctx.fillRect(m, botBarY, contentW, botBarH);
+
+      const tickerFontSize = Math.floor(botBarH * 0.48);
+      ctx.font = `800 ${tickerFontSize}px monospace, ui-monospace, sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textBaseline = 'middle';
+
+      const marqueeStr = '  ✦ DRUM 01: FLUO PINK [15°]  ✦ DRUM 02: SUNFLOWER YELLOW [45°]  ✦ DRUM 03: FEDERAL BLUE [75°]  ✦ ROSETTE INTERFERENCE  ✦ SOY EMULSION  ✦ 120 RPM FEED  ';
+      const textWidth = ctx.measureText(marqueeStr).width;
+      const scrollOffset = -(time * 85) % textWidth;
+      const drawY = botBarY + botBarH * 0.52;
+      for (let x = scrollOffset + m; x < w - m + textWidth; x += textWidth) {
+        ctx.fillText(marqueeStr, x, drawY);
+      }
+
+      ctx.restore();
+    }
+
+    // Animation Render Loop
+    let lastTime = 0;
+    let animTime = 0;
+
+    function render(now) {
+      window.__frames++;
+
+      if (!lastTime) lastTime = now;
+      const dt = Math.min((now - lastTime) * 0.001, 0.1);
+      lastTime = now;
+      animTime += dt;
+
+      resize();
+
+      // Drum cadence: ~1.4 Hz (mechanical feed cycle with periodic cam micro-stutter)
+      const drumSpeed = 1.4;
+      const drumCycle = (animTime * drumSpeed) % 1.0;
+      const camStutter = Math.sin(drumCycle * Math.PI * 2) * 0.5
+                       + Math.sign(Math.sin(drumCycle * Math.PI * 6)) * Math.pow(Math.abs(Math.sin(drumCycle * Math.PI * 6)), 3.0) * 0.5;
+      const feedOffset = (animTime * 120.0) % 2000.0;
+
+      // Draw procedural vector artwork
+      drawTestScene(offCtx, offCanvas.width, offCanvas.height, animTime);
+
+      // Upload offscreen canvas to WebGL texture
+      gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, offCanvas);
+
+      // Execute Risograph halftone print effect shader
+      gl.useProgram(program);
+      gl.uniform1i(uSourceLoc, 0);
+      gl.uniform2f(uResLoc, canvas.width, canvas.height);
+      gl.uniform1f(uTimeLoc, animTime);
+      gl.uniform1f(uScaleLoc, 68.0);
+      gl.uniform1f(uDriftLoc, registrationDrift);
+      gl.uniform1f(uStarvationLoc, rollerStarvation);
+      gl.uniform1f(uDrynessLoc, inkDryness);
+      gl.uniform1f(uFeedStutterLoc, camStutter);
+      gl.uniform1f(uFeedOffsetLoc, feedOffset);
+      gl.uniform1f(uSplitLoc, showSplit ? 1.0 : 0.0);
+      gl.uniform1f(uSplitRatioLoc, splitRatio);
+      gl.uniform1f(uSeedLoc, seed);
+
+      gl.bindVertexArray(vao);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

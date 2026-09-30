@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="../tools/lab-shim.js"></script>
+<title>Droste Spiral Zoom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Droste Spiral Zoom — the Escher "Print Gallery" transform.
+  A picture P that contains a copy of itself shrunk by a factor r is periodic in
+  log-polar space w = log p with lattice periods (ln r) and (2*pi*i).
+  The screen is mapped by w = c * log z with c = (T*2*pi*i + A*ln r) / (2*pi*i):
+  walking once around the screen origin then advances T turns and A levels of
+  the recursion, so the nested copies join up into A spiral arms.
+  Shifting w by a real amount is a seamless endless zoom, because the picture is
+  periodic in that direction.
+*/
+:root { --panel-bg: rgba(18, 14, 30, 0.8); --panel-fg: #efe9f7; --panel-muted: #b0a6c4; --accent: #c9a7ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(18, 14, 30, 0.8); } }
+:root[data-theme="dark"] { --panel-bg: rgba(18, 14, 30, 0.8); }
+html, body { height: 100%; margin: 0; }
+body { background: #000; overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+canvas.drag { cursor: grabbing; }
+.panel { position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: min(300px, calc(100vw - 24px));
+  background: var(--panel-bg); color: var(--panel-fg); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4; max-height: calc(100vh - 80px); overflow: auto; }
+.hidden { display: none !important; }
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; }
+.panel summary::-webkit-details-marker { display: none; }
+.body { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 88px 1fr 50px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+select, button { font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+select { flex: 1; }
+select option { color: #1b1b1b; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+.error { color: #ffb4a8; white-space: pre-wrap; font-size: 12px; }
+.error:empty { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" id="panel" open>
+  <summary>Droste Spiral Zoom</summary>
+  <div class="body">
+    <div class="row">
+      <select id="pattern" aria-label="Picture">
+        <option value="0">Neon frames</option>
+        <option value="1" selected>Op-art checker</option>
+        <option value="2">Mandala</option>
+      </select>
+      <button id="reseed">Reseed</button>
+    </div>
+    <label>Scale ratio <input type="range" id="ratio" min="1.6" max="12" step="0.1" value="3"><output id="ratioo"></output></label>
+    <label>Spiral arms <input type="range" id="arms" min="0" max="5" step="1" value="3"><output id="armso"></output></label>
+    <label>Copies <input type="range" id="turns" min="1" max="4" step="1" value="1"><output id="turnso"></output></label>
+    <label>Zoom speed <input type="range" id="speed" min="-1" max="1" step="0.01" value="0.35"><output id="speedo"></output></label>
+    <label>Color cycle <input type="range" id="hue" min="0" max="1" step="0.01" value="0.25"><output id="hueo"></output></label>
+    <label>Glow <input type="range" id="glow" min="0" max="1.5" step="0.01" value="0.8"><output id="glowo"></output></label>
+    <div class="row">
+      <button id="center">Recenter</button>
+      <button id="fs">Full screen</button>
+      <button id="hide">Hide controls</button>
+    </div>
+    <div class="hint">Drag to move the vanishing point, scroll to scrub the zoom. Arms 0 is the classic straight Droste. H toggles controls, R records.</div>
+    <div class="error" id="err"></div>
+  </div>
+</details>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("c");
+  const gl = canvas.getContext("webgl2", { antialias: false });
+  if (!gl) { $("err").textContent = "This doodle needs WebGL2, which this browser does not provide."; return; }
+
+  const VS = `#version 300 es
+  in vec2 pos; void main(){ gl_Position = vec4(pos, 0.0, 1.0); }`;
+
+  const FS = `#version 300 es
+  precision highp float;
+  out vec4 outColor;
+  uniform vec2 uRes, uCenter;
+  uniform float uScale, uLogR, uArms, uTurns, uPhase, uHue, uGlow;
+  uniform int uPattern;
+  uniform vec3 uPalA, uPalB;
+  #define TAU 6.28318530718
+
+  vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
+  vec3 pal(float t) { return 0.5 + 0.5 * cos(TAU * (uPalB * t + uPalA)); }
+
+  // Filtered square wave (1 on half of each period). fx = pixel footprint in x units.
+  // Fades to its mean (0.5) once a period gets narrower than a couple of pixels.
+  float stripe(float x, float fx) {
+    float s = clamp(0.5 + (0.25 - abs(fract(x) - 0.5)) / max(fx, 1e-5), 0.0, 1.0);
+    return mix(s, 0.5, smoothstep(0.25, 0.7, fx));
+  }
+  // Glowing line at every integer of x. Line width is wUnits in x units but never under ~1.2 px.
+  float neon(float x, float fx, float wUnits) {
+    fx = max(fx, 1e-5);
+    float dpx = abs(fract(x + 0.5) - 0.5) / fx;       // distance to nearest line, pixels
+    float wpx = clamp(wUnits / fx, 1.2, 10.0);
+    float core = 1.0 - smoothstep(wpx * 0.5 - 0.6, wpx * 0.5 + 0.6, dpx);
+    float glow = exp(-dpx / (3.0 + 5.0 * uGlow)) * 0.55 * uGlow;
+    float resolved = smoothstep(0.45, 0.12, fx);      // lines closer than ~3 px merge
+    return mix(0.3 + 0.2 * uGlow, core + glow, resolved);
+  }
+
+  // The recursive picture, drawn on the square annulus 1 <= max(|x|,|y|) < r.
+  // The inner square (side 2) is where the shrunken copy of the whole picture sits.
+  // k = recursion level, fp = pixel footprint in p units (from the analytic derivative).
+  vec3 picture(vec2 p, float k, float fp, float spin) {
+    float s = max(abs(p.x), abs(p.y));                 // square radius
+    float ls = log(s) / uLogR;                         // 0..1 across one level
+    float th = atan(p.y, p.x) / TAU + 0.5;             // 0..1 around
+    float fls = fp / (s * uLogR);                      // footprint in ls units
+    float fth = fp / (TAU * length(p));                // footprint in th units
+    // Hue follows the level count, minus A * (screen angle): crossing the log branch cut
+    // jumps k by A, and this term cancels that, so color is continuous everywhere.
+    float h = 0.11 * (k + ls - uArms * spin) + uHue;
+    vec3 A = pal(h), B = pal(h + 0.5), C = pal(h + 0.25);
+    vec3 col;
+    if (uPattern == 0) {
+      // Nested neon squares, rays, and a faint checker body between them
+      float rings = neon(ls * 5.0, fls * 5.0, 0.07);
+      float rays = neon(th * 16.0, fth * 16.0, 0.06);
+      float body = stripe(ls * 5.0, fls * 5.0) + stripe(th * 16.0, fth * 16.0);
+      body = abs(body - 1.0);                          // xor of the two stripes
+      col = A * (0.05 + 0.18 * body) + A * rings * 1.1 + B * rays * 0.55;
+    } else if (uPattern == 1) {
+      // Log-polar op-art checker: conformal, so the squares stay square at every level
+      float u = ls * 6.0, v = th * 24.0;
+      float cu = stripe(u, fls * 6.0), cv = stripe(v, fth * 24.0);
+      float chk = cu + cv - 2.0 * cu * cv;
+      float warp = stripe(u * 2.0 + v * 0.5, fls * 12.0 + fth * 12.0);
+      col = mix(vec3(0.02, 0.0, 0.05), mix(A, B, warp) * 1.15, chk);
+      col += C * neon(u, fls * 6.0, 0.04) * 0.35;
+    } else {
+      // Mandala: three rings of petals per level, petal outline as a neon edge
+      float x = ls * 3.0, layer = floor(x), f = fract(x);
+      float P = 8.0 + 4.0 * mod(layer, 2.0);
+      float edge = 0.3 + 0.6 * pow(abs(cos(th * TAU * P * 0.5 + layer * 0.9)), 0.7);
+      float ff = fls * 3.0 * 1.8;
+      float inside = clamp((edge - f) / max(ff, 1e-5) + 0.5, 0.0, 1.0);
+      float outline = neon((f - edge) * 0.5 + 0.5, ff * 0.5, 0.03);
+      float veins = neon(th * P, fth * P, 0.05) * inside;
+      vec3 petal = pal(h + 0.18 * layer);
+      col = petal * inside * (0.35 + 0.65 * f / max(edge, 0.01)) + pal(h + 0.5 + 0.18 * layer) * outline * 0.9 + petal * veins * 0.4;
+      col += B * 0.05;
+    }
+    // The picture frame around the inner copy: a white-hot band with a colored bevel
+    float fw = 0.07;                                   // frame width in p units
+    float d = s - 1.0;
+    float inFrame = clamp((fw - d) / max(fp, 1e-5) + 0.5, 0.0, 1.0) * smoothstep(0.35, 0.05, fp / fw);
+    vec3 frame = mix(C * 1.4, vec3(1.2), smoothstep(fw, 0.0, abs(d - fw * 0.5) * 2.0) * 0.6);
+    col = mix(col, frame, inFrame);
+    col += C * uGlow * 0.5 * exp(-max(d - fw, 0.0) / (fw * 1.5 + fp * 2.0)) * (1.0 - inFrame);
+    return col;
+  }
+
+  void main() {
+    float pix = uScale / (0.5 * uRes.y);               // z units per pixel
+    vec2 z = (gl_FragCoord.xy - 0.5 * uRes) * pix - uCenter;
+    float rz = max(length(z), 1e-6);
+    vec2 u = vec2(log(rz), atan(z.y, z.x));            // log z
+    vec2 c = vec2(uTurns, -uArms * uLogR / TAU);       // (T*2pi*i + A*ln r) / (2pi*i)
+    vec2 w = cmul(c, u) + vec2(uPhase, 0.0);           // spiral log-coordinates
+    float k = floor(w.x / uLogR);                      // recursion level
+    w.x -= k * uLogR;                                  // fold into one period
+    vec2 p = exp(w.x) * vec2(cos(w.y), sin(w.y));      // back to the picture plane, 1 <= |p| < r
+    if (max(abs(p.x), abs(p.y)) < 1.0) { p *= exp(uLogR); k -= 1.0; } // circle -> square annulus
+    // dp/dz = p * c / z, so a pixel covers |p| |c| / |z| * pix in the picture plane
+    float fp = length(p) * length(c) / rz * pix;
+    vec3 col = picture(p, k, fp, u.y / TAU);
+    // Vanishing point: the picture's detail collapses into a hot core
+    float coreR = 0.08 * uScale;
+    col += pal(uHue) * uGlow * 0.6 * exp(-rz / coreR);
+    // Vignette and soft tone map
+    vec2 q = gl_FragCoord.xy / uRes - 0.5;
+    col *= 1.0 - 0.55 * dot(q, q);
+    col = 1.0 - exp(-col * 1.35);
+    outColor = vec4(pow(col, vec3(0.92)), 1.0);
+  }`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  let prog;
+  try {
+    prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  } catch (e) { $("err").textContent = "Shader error:\n" + e.message; return; }
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "pos");
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = {};
+  ["uRes", "uCenter", "uScale", "uLogR", "uArms", "uTurns", "uPhase", "uHue", "uGlow", "uPattern", "uPalA", "uPalB"]
+    .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+  // ---------- Seeded palette ----------
+  let seed = 7;
+  function rng() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+  const PALS = [[[0.0, 0.33, 0.67], [1, 1, 1]], [[0.8, 0.9, 0.3], [1, 1, 0.5]], [[0.5, 0.2, 0.25], [1, 0.7, 0.4]]];
+  let palA = PALS[0][0], palB = PALS[0][1];
+  function reseed() {
+    seed = (Math.random() * 1e9) >>> 0;
+    palA = [rng(), rng(), rng()];
+    palB = [0.6 + rng() * 0.6, 0.6 + rng() * 0.6, 0.6 + rng() * 0.6];
+  }
+  $("reseed").onclick = reseed;
+
+  // ---------- Controls ----------
+  const fmt = { ratio: v => v.toFixed(1) + "x", arms: v => v === 0 ? "straight" : v, turns: v => v, speed: v => v.toFixed(2), hue: v => v.toFixed(2), glow: v => v.toFixed(2) };
+  function sync() { for (const id in fmt) $(id + "o").textContent = fmt[id](+$(id).value); }
+  Object.keys(fmt).forEach(id => $(id).addEventListener("input", sync));
+
+  const panel = $("panel"), recBtn = () => document.getElementById("recBtn");
+  function toggleUI() { panel.classList.toggle("hidden"); const b = recBtn(); if (b) b.classList.toggle("hidden"); }
+  $("hide").onclick = toggleUI;
+  addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input,textarea,select")) return;
+    if (e.key === "h" || e.key === "H") toggleUI();
+    if (e.key === "r" || e.key === "R") { const b = recBtn(); if (b) b.click(); }
+  });
+  canvas.addEventListener("dblclick", () => panel.classList.remove("hidden"));
+  $("fs").onclick = async () => {
+    try { await document.documentElement.requestFullscreen(); }
+    catch { $("err").textContent = "Full screen is blocked in this view. Open the page in its own tab to use it."; }
+  };
+
+  // ---------- Pointer: drag the vanishing point, wheel scrubs the zoom ----------
+  const SCALE = 1.25;                                   // half-height of the view in z units
+  const center = { x: 0, y: 0, tx: 0, ty: 0 };
+  let drag = null, scrub = 0;
+  const toZ = (e) => { const r = canvas.getBoundingClientRect(); const s = SCALE / (0.5 * r.height); return [(e.clientX - r.left - r.width / 2) * s, -(e.clientY - r.top - r.height / 2) * s]; };
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId); canvas.classList.add("drag");
+    const [x, y] = toZ(e); drag = { x, y, cx: center.tx, cy: center.ty };
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const [x, y] = toZ(e); center.tx = drag.cx + (x - drag.x); center.ty = drag.cy + (y - drag.y);
+  });
+  const end = () => { drag = null; canvas.classList.remove("drag"); };
+  canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); scrub += e.deltaY * 0.0015; }, { passive: false });
+  $("center").onclick = () => { center.tx = 0; center.ty = 0; };
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(innerWidth * dpr); canvas.height = Math.floor(innerHeight * dpr);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  addEventListener("resize", resize);
+
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { $("speed").value = 0.08; $("hue").value = 0.05; }
+  // URL parameters preset the controls, e.g. ?arms=2&pattern=1
+  new URLSearchParams(location.search).forEach((v, k) => { const el = $(k); if (el && "value" in el) el.value = v; });
+  sync(); resize();
+
+  // phase is in units of whole recursion levels, so the zoom speed feels the same at any ratio
+  let levels = 0, hueT = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const logR = Math.log(+$("ratio").value);
+    levels -= dt * +$("speed").value * 0.5 + scrub; scrub *= 0;
+    levels = ((levels % 1) + 1) % 1;                    // periodic: wrap keeps float precision
+    hueT = (hueT + dt * +$("hue").value * 0.12) % 1;
+    center.x += (center.tx - center.x) * Math.min(1, dt * 10);
+    center.y += (center.ty - center.y) * Math.min(1, dt * 10);
+    gl.uniform2f(U.uRes, canvas.width, canvas.height);
+    gl.uniform2f(U.uCenter, center.x, center.y);
+    gl.uniform1f(U.uScale, SCALE);
+    gl.uniform1f(U.uLogR, logR);
+    gl.uniform1f(U.uArms, +$("arms").value);
+    gl.uniform1f(U.uTurns, +$("turns").value);
+    gl.uniform1f(U.uPhase, levels * logR);
+    gl.uniform1f(U.uHue, hueT - levels * 0.11);         // keep hue locked to content as it wraps
+    gl.uniform1f(U.uGlow, +$("glow").value);
+    gl.uniform1i(U.uPattern, +$("pattern").value);
+    gl.uniform3fv(U.uPalA, palA); gl.uniform3fv(U.uPalB, palB);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+<!-- Clip recorder: captures the canvas (not the controls) via MediaRecorder,
+     then offers the file through the page's downloads capability. -->
+<style>
+.rec { position: fixed; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 10;
+  font: 600 13px "Instrument Sans", system-ui, sans-serif; color: #f3f0ea; background: rgba(20,20,24,0.78);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 18px; padding: 7px 14px; cursor: pointer;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; }
+.rec.on { background: rgba(170, 30, 40, 0.88); }
+.rec:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+</style>
+<button class="rec" id="recBtn" aria-live="polite">Record clip</button>
+<script>
+(() => {
+  const btn = document.getElementById("recBtn");
+  const canvas = document.querySelector("canvas");
+  const LIMIT = 30;
+  if (!canvas || !canvas.captureStream || !window.MediaRecorder) return;
+  const TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = TYPES.find(t => MediaRecorder.isTypeSupported(t));
+  if (!mime) return;
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  let downloads = null, rec = null, chunks = [], t0 = 0, tick = null;
+  (async () => {
+    if (!window.claude || !window.claude.use) return;
+    downloads = await window.claude.use("downloads");
+    if (downloads) btn.style.display = "block";
+  })();
+  function stop() { if (rec && rec.state === "recording") rec.stop(); }
+  btn.onclick = () => {
+    if (rec && rec.state === "recording") return stop();
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 12e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(tick); btn.classList.remove("on"); btn.textContent = "Saving...";
+      const blob = new Blob(chunks, { type: mime });
+      const slug = document.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      try { await downloads.save({ filename: `${slug}-${stamp}.${ext}`, data: blob }); btn.textContent = "Saved"; }
+      catch (e) { btn.textContent = e && e.code === "declined" ? "Not saved" : "Save failed"; }
+      setTimeout(() => { btn.textContent = "Record clip"; }, 2000);
+    };
+    rec.start(250);
+    t0 = performance.now(); btn.classList.add("on"); btn.textContent = "Stop  0 s";
+    tick = setInterval(() => {
+      const s = Math.floor((performance.now() - t0) / 1000);
+      btn.textContent = `Stop  ${s} s`;
+      if (s >= LIMIT) stop();
+    }, 250);
+  };
+})();
+</script>
+</body>
+</html>

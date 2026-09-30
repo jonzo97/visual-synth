@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Maximalist Procedural Pattern Collage</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #07070a;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: rgba(10, 10, 16, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 14px 16px;
+      color: #f0f0f5;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 11px;
+      width: 250px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      pointer-events: auto;
+    }
+    #ui h1 {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      color: #ffffff;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding-bottom: 6px;
+    }
+    .control {
+      margin-bottom: 10px;
+    }
+    .control:last-child {
+      margin-bottom: 0;
+    }
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: #cccccc;
+      font-weight: 600;
+    }
+    .label-row span:last-child {
+      color: #00f0ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 700;
+    }
+    input[type="range"] {
+      width: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.18);
+      height: 5px;
+      border-radius: 3px;
+      outline: none;
+      margin: 4px 0;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ff007f;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 8px rgba(255, 0, 127, 0.9);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ff007f;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 8px rgba(255, 0, 127, 0.9);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div id="ui">
+    <h1>Maximalist Procedural Pattern Collage</h1>
+    <div class="control">
+      <div class="label-row">
+        <span>Subdivision Depth</span>
+        <span id="val-depth">4</span>
+      </div>
+      <input type="range" id="ctrl-depth" min="2" max="6" step="1" value="4">
+    </div>
+    <div class="control">
+      <div class="label-row">
+        <span>BPM Tempo</span>
+        <span id="val-bpm">90</span>
+      </div>
+      <input type="range" id="ctrl-bpm" min="40" max="160" step="5" value="90">
+    </div>
+    <div class="control">
+      <div class="label-row">
+        <span>Pattern Complexity</span>
+        <span id="val-complexity">10</span>
+      </div>
+      <input type="range" id="ctrl-complexity" min="4" max="20" step="1" value="10">
+    </div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    // Deterministic Mulberry32 PRNG
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let seedValue = parseInt(urlParams.get('seed') || '1', 10);
+    if (isNaN(seedValue)) seedValue = 1;
+
+    const PALETTE = ['#ff007f', '#00f0ff', '#ffe600', '#ff3b00', '#39ff14', '#b537f2'];
+    const GLYPHS = ['✦', '◆', '▲', '●', '■', '★', '❖', '✚'];
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const ui = document.getElementById('ui');
+
+    let depth = 4;
+    let bpm = 90;
+    let complexity = 10;
+    let leaves = [];
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+
+    let mouseX = -1000;
+    let mouseY = -1000;
+    let pointerActive = false;
+
+    // Controls and bindings
+    const inputDepth = document.getElementById('ctrl-depth');
+    const inputBpm = document.getElementById('ctrl-bpm');
+    const inputComplexity = document.getElementById('ctrl-complexity');
+    const valDepth = document.getElementById('val-depth');
+    const valBpm = document.getElementById('val-bpm');
+    const valComplexity = document.getElementById('val-complexity');
+
+    inputDepth.addEventListener('input', (e) => {
+      depth = parseInt(e.target.value, 10);
+      valDepth.textContent = depth;
+      rebuildCollage();
+    });
+
+    inputBpm.addEventListener('input', (e) => {
+      bpm = parseInt(e.target.value, 10);
+      valBpm.textContent = bpm;
+    });
+
+    inputComplexity.addEventListener('input', (e) => {
+      complexity = parseInt(e.target.value, 10);
+      valComplexity.textContent = complexity;
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        ui.style.display = ui.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      mouseX = e.clientX * dpr;
+      mouseY = e.clientY * dpr;
+      pointerActive = true;
+    });
+
+    window.addEventListener('pointerleave', () => {
+      pointerActive = false;
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+
+    // Space partitioning generator
+    function buildBSP(w, h, maxDepth, rng) {
+      const result = [];
+      function split(x, y, cw, ch, curDepth) {
+        const minDim = 70 * dpr;
+        if (curDepth >= maxDepth || (cw < minDim * 2 && ch < minDim * 2)) {
+          result.push({ x, y, w: cw, h: ch, depth: curDepth });
+          return;
+        }
+
+        let splitH;
+        if (cw > ch * 1.35) splitH = false;
+        else if (ch > cw * 1.35) splitH = true;
+        else splitH = rng() < 0.5;
+
+        const ratio = 0.38 + rng() * 0.24;
+
+        if (splitH) {
+          const h1 = Math.round(ch * ratio);
+          const h2 = ch - h1;
+          split(x, y, cw, h1, curDepth + 1);
+          split(x, y + h1, cw, h2, curDepth + 1);
+        } else {
+          const w1 = Math.round(cw * ratio);
+          const w2 = cw - w1;
+          split(x, y, w1, ch, curDepth + 1);
+          split(x + w1, y, w2, ch, curDepth + 1);
+        }
+      }
+
+      split(0, 0, w, h, 0);
+      return result;
+    }
+
+    function rebuildCollage() {
+      if (width === 0 || height === 0) return;
+      const rng = mulberry32(seedValue);
+      const rawLeaves = buildBSP(width, height, depth, rng);
+
+      leaves = rawLeaves.map((leaf, index) => {
+        const pType = Math.floor(rng() * 6);
+        const c1 = PALETTE[Math.floor(rng() * PALETTE.length)];
+        let c2 = PALETTE[Math.floor(rng() * PALETTE.length)];
+        while (c2 === c1) c2 = PALETTE[Math.floor(rng() * PALETTE.length)];
+        let c3 = PALETTE[Math.floor(rng() * PALETTE.length)];
+        while (c3 === c1 || c3 === c2) c3 = PALETTE[Math.floor(rng() * PALETTE.length)];
+
+        return {
+          ...leaf,
+          index,
+          pType,
+          c1, c2, c3,
+          phase: rng() * Math.PI * 2,
+          speedMult: 0.6 + rng() * 0.9,
+          dir: rng() < 0.5 ? 1 : -1,
+          badge: GLYPHS[Math.floor(rng() * GLYPHS.length)] + ' ' + ('0' + (index + 1)).slice(-2)
+        };
+      });
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth * dpr;
+      height = window.innerHeight * dpr;
+      canvas.width = width;
+      canvas.height = height;
+      rebuildCollage();
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Pattern 0: Concentric Guilloché / Starburst Rosette
+    function drawGuilloche(cell, t, env, hovered) {
+      const cx = cell.x + cell.w / 2;
+      const cy = cell.y + cell.h / 2;
+      const maxR = Math.hypot(cell.w, cell.h) * 0.55;
+      const pulse = 1.0 + (hovered ? 0.25 : 0.12) * env;
+      const rot = t * 0.5 * cell.dir * cell.speedMult + cell.phase;
+
+      // Radial background spikes
+      const rays = 10 + Math.floor(complexity * 0.6) * 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rot * 0.25);
+      ctx.fillStyle = '#07070a';
+      for (let i = 0; i < rays; i += 2) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const a1 = (i * Math.PI * 2) / rays;
+        const a2 = ((i + 1) * Math.PI * 2) / rays;
+        ctx.arc(0, 0, maxR * 1.5, a1, a2);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Spirograph hypocycloids
+      const petals = 4 + (complexity % 7);
+      const layers = 4;
+      for (let l = 1; l <= layers; l++) {
+        const rBase = (maxR * (l / layers)) * pulse;
+        const amp = rBase * 0.24;
+        const pPhase = rot * (l % 2 === 0 ? 1 : -1) * (1 + l * 0.25);
+
+        ctx.beginPath();
+        const steps = 140;
+        for (let s = 0; s <= steps; s++) {
+          const theta = (s / steps) * Math.PI * 2;
+          const r = rBase + amp * Math.sin(petals * theta + pPhase);
+          const px = cx + Math.cos(theta) * r;
+          const py = cy + Math.sin(theta) * r;
+          if (s === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+
+        ctx.lineWidth = 6 * dpr;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.lineWidth = 2.4 * dpr;
+        ctx.strokeStyle = (l % 2 === 0) ? cell.c2 : cell.c3;
+        ctx.stroke();
+      }
+
+      // Center jewel
+      const coreR = Math.min(cell.w, cell.h) * 0.12 * pulse;
+      ctx.beginPath();
+      ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 4 * dpr;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+    }
+
+    // Pattern 1: Optical Chevrons & Dense Slanted Hazard Stripes
+    function drawChevrons(cell, t, env, hovered) {
+      const cx = cell.x + cell.w / 2;
+      const cy = cell.y + cell.h / 2;
+      const stripeW = Math.max(12 * dpr, (75 * dpr) / complexity);
+      const flow = (t * 50 * dpr * cell.speedMult * cell.dir) % (stripeW * 3);
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      const angle = (cell.index % 2 === 0 ? Math.PI / 4 : -Math.PI / 4);
+      ctx.rotate(angle);
+      const diag = Math.hypot(cell.w, cell.h);
+
+      for (let p = -diag - stripeW * 3; p < diag + stripeW * 3; p += stripeW) {
+        const sp = p + flow;
+        const idx = Math.floor(Math.abs(p) / stripeW);
+        ctx.fillStyle = (idx % 3 === 0) ? '#07070a' : (idx % 3 === 1) ? cell.c2 : cell.c3;
+        ctx.fillRect(sp, -diag, stripeW, diag * 2);
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(sp, -diag, 3 * dpr, diag * 2);
+      }
+      ctx.restore();
+
+      // Central diamond target
+      const diamSize = Math.min(cell.w, cell.h) * 0.5 * (1 + (hovered ? 0.25 : 0.12) * env);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 4);
+      for (let d = 3; d >= 1; d--) {
+        const sz = diamSize * (d / 3);
+        ctx.beginPath();
+        ctx.rect(-sz / 2, -sz / 2, sz, sz);
+        ctx.fillStyle = d === 3 ? '#000000' : d === 2 ? cell.c1 : '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 3.5 * dpr;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Pattern 2: Multi-Arc Rainbow Truchet Flow
+    function drawTruchet(cell, t, env, beatIndex) {
+      const ts = Math.max(30 * dpr, Math.min(cell.w, cell.h) / Math.max(2, Math.floor(complexity * 0.45)));
+      const cols = Math.ceil(cell.w / ts);
+      const rows = Math.ceil(cell.h / ts);
+      const arcCount = 3;
+
+      ctx.fillStyle = '#07070a';
+      ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const tx = cell.x + c * ts;
+          const ty = cell.y + r * ts;
+          const flip = ((c * 17 + r * 31 + (beatIndex % 8)) % 2) === 0;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(tx, ty, ts, ts);
+          ctx.clip();
+
+          for (let a = 1; a <= arcCount; a++) {
+            const rad = (ts * a) / (arcCount + 1);
+            const col = a === 1 ? cell.c1 : a === 2 ? cell.c2 : cell.c3;
+
+            const c1x = flip ? tx : tx + ts;
+            const c1y = ty;
+            const c2x = flip ? tx + ts : tx;
+            const c2y = ty + ts;
+
+            // Black outline
+            ctx.lineWidth = 6 * dpr;
+            ctx.strokeStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(c1x, c1y, rad, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(c2x, c2y, rad, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Neon stroke
+            ctx.lineWidth = 2.4 * dpr;
+            ctx.strokeStyle = col;
+            ctx.beginPath();
+            ctx.arc(c1x, c1y, rad, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(c2x, c2y, rad, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          if ((c + r) % 2 === 0) {
+            ctx.beginPath();
+            ctx.arc(tx + ts / 2, ty + ts / 2, (3.5 + 2 * env) * dpr, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+      }
+    }
+
+    // Pattern 3: Layered Sacred Geometry / Floral Mandala
+    function drawMandala(cell, t, env, hovered) {
+      const cx = cell.x + cell.w / 2;
+      const cy = cell.y + cell.h / 2;
+      const maxR = Math.min(cell.w, cell.h) * 0.46 * (1 + (hovered ? 0.28 : 0.14) * env);
+      const rot = t * 0.6 * cell.speedMult * cell.dir + cell.phase;
+
+      ctx.fillStyle = '#07070a';
+      ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+
+      const pts = 8 + Math.floor(complexity * 0.5) * 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Layer 1: Outer Star Polygon
+      ctx.rotate(rot);
+      ctx.beginPath();
+      for (let i = 0; i < pts * 2; i++) {
+        const a = (i * Math.PI) / pts;
+        const r = (i % 2 === 0) ? maxR : maxR * 0.68;
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = cell.c1;
+      ctx.fill();
+      ctx.lineWidth = 5 * dpr;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // Layer 2: Counter-rotating Scalloped Petals
+      ctx.rotate(-rot * 2.2);
+      const petalCount = 8;
+      for (let i = 0; i < petalCount; i++) {
+        const a = (i * Math.PI * 2) / petalCount;
+        const pr = maxR * 0.5;
+        const px = Math.cos(a) * pr;
+        const py = Math.sin(a) * pr;
+        ctx.beginPath();
+        ctx.arc(px, py, pr * 0.44, 0, Math.PI * 2);
+        ctx.fillStyle = cell.c2;
+        ctx.fill();
+        ctx.lineWidth = 4 * dpr;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+      }
+
+      // Layer 3: Beaded Ring
+      const beadR = maxR * 0.32;
+      const numBeads = 16;
+      for (let i = 0; i < numBeads; i++) {
+        const a = (i * Math.PI * 2) / numBeads;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * beadR, Math.sin(a) * beadR, 3.5 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      }
+
+      // Layer 4: Center Jeweled Core
+      ctx.beginPath();
+      ctx.arc(0, 0, maxR * 0.18, 0, Math.PI * 2);
+      ctx.fillStyle = cell.c3;
+      ctx.fill();
+      ctx.lineWidth = 3 * dpr;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // Pattern 4: Op-Art Checkerboard Hypno-Tunnel
+    function drawHypnoTunnel(cell, t, env, hovered) {
+      const cx = cell.x + cell.w / 2;
+      const cy = cell.y + cell.h / 2;
+      const rings = Math.floor(complexity * 1.2) + 4;
+      const zoom = (t * 1.6 * cell.speedMult + (hovered ? 0.35 : 0.2) * env) % 1.0;
+
+      ctx.fillStyle = '#07070a';
+      ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+
+      for (let i = rings; i >= 1; i--) {
+        const rNorm = (i + zoom) / rings;
+        const szW = cell.w * rNorm * 1.45;
+        const szH = cell.h * rNorm * 1.45;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((rings - i) * 0.08 * Math.sin(t + cell.phase));
+
+        ctx.beginPath();
+        ctx.rect(-szW / 2, -szH / 2, szW, szH);
+        ctx.fillStyle = (i % 2 === 0) ? cell.c1 : (i % 4 === 1) ? cell.c2 : '#07070a';
+        ctx.fill();
+        ctx.lineWidth = 3.5 * dpr;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.restore();
+      }
+    }
+
+    // Pattern 5: High-Density Sunburst Vortex with Concentric Wave Rings
+    function drawSunburstVortex(cell, t, env) {
+      const cx = cell.x + (cell.index % 2 === 0 ? 0 : cell.w);
+      const cy = cell.y + (cell.index % 3 === 0 ? cell.h : 0);
+      const maxR = Math.hypot(cell.w, cell.h) * 1.25;
+      const numRays = 16 + Math.floor(complexity * 1.2) * 2;
+      const rot = t * 0.35 * cell.dir * cell.speedMult;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rot);
+
+      for (let i = 0; i < numRays; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const a1 = (i * Math.PI * 2) / numRays;
+        const a2 = ((i + 1) * Math.PI * 2) / numRays;
+        ctx.arc(0, 0, maxR, a1, a2);
+        ctx.closePath();
+        ctx.fillStyle = (i % 2 === 0) ? cell.c2 : '#07070a';
+        ctx.fill();
+        ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const ringStep = Math.max(16 * dpr, (110 * dpr) / complexity);
+      const ringOffset = (t * 35 * dpr * cell.speedMult) % ringStep;
+      for (let r = ringOffset; r < maxR; r += ringStep) {
+        ctx.lineWidth = 4 * dpr;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = (Math.floor(r / ringStep) % 2 === 0) ? cell.c1 : '#ffffff';
+        ctx.stroke();
+      }
+    }
+
+    // Main animation loop
+    function render(timestamp) {
+      window.__frames++;
+
+      const time = timestamp / 1000;
+      const beatPeriod = 60 / bpm;
+      const beatTime = time / beatPeriod;
+      const beatIndex = Math.floor(beatTime);
+      const beatFrac = beatTime - beatIndex;
+      const envelope = Math.exp(-beatFrac * 6.5); // Snappy rhythmic pulse
+
+      ctx.fillStyle = '#07070a';
+      ctx.fillRect(0, 0, width, height);
+
+      for (let i = 0; i < leaves.length; i++) {
+        const cell = leaves[i];
+        const hovered = pointerActive && (mouseX >= cell.x && mouseX < cell.x + cell.w && mouseY >= cell.y && mouseY < cell.y + cell.h);
+
+        // Clip compartment
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(cell.x, cell.y, cell.w, cell.h);
+        ctx.clip();
+
+        // Background base
+        ctx.fillStyle = cell.c1;
+        ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+
+        // Pattern selection
+        const pType = cell.pType;
+        if (pType === 0) drawGuilloche(cell, time, envelope, hovered);
+        else if (pType === 1) drawChevrons(cell, time, envelope, hovered);
+        else if (pType === 2) drawTruchet(cell, time, envelope, beatIndex);
+        else if (pType === 3) drawMandala(cell, time, envelope, hovered);
+        else if (pType === 4) drawHypnoTunnel(cell, time, envelope, hovered);
+        else drawSunburstVortex(cell, time, envelope);
+
+        ctx.restore();
+
+        // Compartment frame & outlines
+        ctx.lineWidth = 5 * dpr;
+        ctx.strokeStyle = '#000000';
+        ctx.strokeRect(cell.x, cell.y, cell.w, cell.h);
+
+        ctx.lineWidth = 1.5 * dpr;
+        ctx.strokeStyle = hovered ? '#ffffff' : cell.c2;
+        ctx.strokeRect(cell.x + 2 * dpr, cell.y + 2 * dpr, cell.w - 4 * dpr, cell.h - 4 * dpr);
+
+        // Corner brackets
+        const bLen = Math.min(14 * dpr, cell.w * 0.25, cell.h * 0.25);
+        ctx.lineWidth = 3 * dpr;
+        ctx.strokeStyle = '#000000';
+
+        // Top-left bracket
+        ctx.beginPath();
+        ctx.moveTo(cell.x + bLen, cell.y);
+        ctx.lineTo(cell.x, cell.y);
+        ctx.lineTo(cell.x, cell.y + bLen);
+        ctx.stroke();
+
+        // Top-right bracket
+        ctx.beginPath();
+        ctx.moveTo(cell.x + cell.w - bLen, cell.y);
+        ctx.lineTo(cell.x + cell.w, cell.y);
+        ctx.lineTo(cell.x + cell.w, cell.y + bLen);
+        ctx.stroke();
+
+        // Bottom-left bracket
+        ctx.beginPath();
+        ctx.moveTo(cell.x, cell.y + cell.h - bLen);
+        ctx.lineTo(cell.x, cell.y + cell.h);
+        ctx.lineTo(cell.x + bLen, cell.y + cell.h);
+        ctx.stroke();
+
+        // Bottom-right bracket
+        ctx.beginPath();
+        ctx.moveTo(cell.x + cell.w - bLen, cell.y + cell.h);
+        ctx.lineTo(cell.x + cell.w, cell.y + cell.h);
+        ctx.lineTo(cell.x + cell.w, cell.y + cell.h - bLen);
+        ctx.stroke();
+
+        // Maximalist badge in corner
+        if (cell.w > 65 * dpr && cell.h > 45 * dpr) {
+          const bw = 46 * dpr;
+          const bh = 16 * dpr;
+          const bx = cell.x + 5 * dpr;
+          const by = cell.y + 5 * dpr;
+
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(bx, by, bw, bh);
+
+          ctx.lineWidth = 1.5 * dpr;
+          ctx.strokeStyle = cell.c1;
+          ctx.strokeRect(bx, by, bw, bh);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `bold ${9 * dpr}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(cell.badge, bx + bw / 2, by + bh / 2);
+        }
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

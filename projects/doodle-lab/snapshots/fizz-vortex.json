@@ -1,0 +1,15 @@
+{
+ "title": "Fizz Vortex",
+ "blurb": "The chrome-night can pulled into a Droste spiral: scratches and bubbles recurse inward forever.",
+ "chain": "Frost Fizz → Droste Zoom",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "carbonation"
+ ],
+ "controls": "Knobs: Carbonation, Scale ratio, Spiral arms, Morph · Drag: light angle and ring radius · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#fizz-vortex"
+}

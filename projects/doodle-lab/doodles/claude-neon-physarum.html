@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Slime Mold Wars</title>
+<script src="../tools/lab-shim.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Neon Slime Mold Wars: multi-species Physarum (Jones 2010 agent model) on the GPU.
+  Each agent senses its own species' trail ahead-left, ahead and ahead-right, minus a
+  "repel" share of the other species' trails, turns toward the strongest, steps and
+  deposits. The trail map (one channel per species) diffuses and decays each step.
+  Agents: RGBA32F texture (x, y in trail pixels, heading, species). Deposit: one GL point
+  per agent, additively blended into an RGBA16F trail map.
+*/
+:root { --panel-bg: rgba(14, 8, 28, 0.82); --panel-fg: #f1eaff; --panel-muted: #b3a6d4; --accent: #ff4fd8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(14, 8, 28, 0.82); } }
+:root[data-theme="dark"] { --panel-bg: rgba(14, 8, 28, 0.82); }
+html, body { height: 100%; margin: 0; }
+body { background: #000; overflow: hidden; font-family: "Instrument Sans", system-ui, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+.panel { position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: min(310px, calc(100vw - 24px));
+  background: var(--panel-bg); color: var(--panel-fg); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4; max-height: calc(100vh - 80px); overflow: auto; border: 1px solid rgba(255,255,255,0.1); }
+.hidden { display: none !important; }
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary small { color: var(--panel-muted); font-weight: 400; }
+.body { padding: 2px 14px 14px; display: grid; gap: 8px; }
+label { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+select, button { font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+select { flex: 1; min-width: 0; }
+select option { color: #1b1b1b; }
+button[aria-pressed="true"] { background: var(--accent); color: #1a0620; border-color: var(--accent); }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+.error { color: #ffb4a8; white-space: pre-wrap; font-size: 12px; }
+.error:empty { display: none; }
+.rec { position: fixed; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 10;
+  font: 600 13px "Instrument Sans", system-ui, sans-serif; color: #f3f0ea; background: rgba(20,20,24,0.78);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 18px; padding: 7px 14px; cursor: pointer; display: none; }
+.rec.on { background: rgba(170, 30, 40, 0.88); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" id="panel" open>
+  <summary>Neon Slime Mold Wars <small id="stat"></small></summary>
+  <div class="body">
+    <div class="row">
+      <select id="preset" aria-label="Behaviour preset">
+        <option value="0">Rival rivers</option>
+        <option value="1">Coral wars</option>
+        <option value="2">Nebula veins</option>
+        <option value="3">Tight labyrinth</option>
+      </select>
+      <select id="pal" aria-label="Palette">
+        <option value="0">Neon</option>
+        <option value="1">Acid</option>
+        <option value="2">Aurora</option>
+        <option value="3">Luma</option>
+      </select>
+    </div>
+    <div class="row">
+      <select id="count" aria-label="Agent count">
+        <option value="256">65k agents</option>
+        <option value="512" selected>262k agents</option>
+        <option value="1024">1M agents</option>
+      </select>
+      <select id="species" aria-label="Species">
+        <option value="1">1 species</option>
+        <option value="2">2 species</option>
+        <option value="3" selected>3 species</option>
+      </select>
+    </div>
+    <label>Sensor angle <input type="range" id="sa" min="0.1" max="1.4" step="0.01"><output></output></label>
+    <label>Sensor reach <input type="range" id="sd" min="2" max="40" step="0.5"><output></output></label>
+    <label>Turn speed <input type="range" id="ra" min="0.05" max="1.2" step="0.01"><output></output></label>
+    <label>Step <input type="range" id="speed" min="0.3" max="3" step="0.05"><output></output></label>
+    <label>Rivalry <input type="range" id="repel" min="0" max="2" step="0.01"><output></output></label>
+    <label>Trail decay <input type="range" id="decay" min="0.8" max="0.995" step="0.001"><output></output></label>
+    <label>Hue drift <input type="range" id="hue" min="0" max="1" step="0.01"><output></output></label>
+    <div class="row">
+      <button id="reseed">Reseed</button>
+      <button id="clear">Clear trails</button>
+      <button id="pause" aria-pressed="false">Pause</button>
+      <button id="fs">Full screen</button>
+    </div>
+    <div class="hint">Drag to lay food; Shift-drag or right-drag lays poison. H hides controls, R records.</div>
+    <div class="error" id="err"></div>
+  </div>
+</details>
+<button class="rec" id="recBtn" aria-live="polite">Record clip</button>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("c");
+  const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: false });
+  const fail = (msg) => { $("err").textContent = msg; };
+  if (!gl) return fail("This doodle needs WebGL2.");
+  if (!gl.getExtension("EXT_color_buffer_float")) return fail("This GPU cannot render to float textures (EXT_color_buffer_float), which the simulation needs.");
+
+  // Presets: sensor angle, reach, turn, step, rivalry, decay
+  const PRESETS = [
+    { sa: 0.45, sd: 12, ra: 0.35, speed: 1.2, repel: 0.9, decay: 0.965, hue: 0.25 },
+    { sa: 1.05, sd: 6, ra: 0.6, speed: 0.9, repel: 1.4, decay: 0.93, hue: 0.4 },
+    { sa: 0.3, sd: 28, ra: 0.2, speed: 1.8, repel: 0.5, decay: 0.985, hue: 0.15 },
+    { sa: 0.8, sd: 4, ra: 0.9, speed: 0.6, repel: 1.1, decay: 0.9, hue: 0.3 },
+  ];
+  const state = { ...PRESETS[0], pal: 0, species: 3, count: 512, paused: false, seed: 1 };
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) { state.speed = 0.5; state.hue = 0.05; }
+
+  const VS = `#version 300 es
+  in vec2 pos; void main(){ gl_Position = vec4(pos, 0.0, 1.0); }`;
+
+  // Agent update: sense own trail minus rivals', steer, step, wrap.
+  const AGENT_FS = `#version 300 es
+  precision highp float; out vec4 o;
+  uniform sampler2D uAgents, uTrail; uniform vec2 uSize; uniform float uSA, uSD, uRA, uSpeed, uRepel, uFrame;
+  float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
+  float sense(vec2 p, float a, float sp){
+    vec4 t = texture(uTrail, (p + uSD * vec2(cos(a), sin(a))) / uSize);
+    vec3 m = sp < 0.5 ? vec3(1,0,0) : sp < 1.5 ? vec3(0,1,0) : vec3(0,0,1);
+    float own = dot(t.rgb, m);
+    return own - uRepel * (t.r + t.g + t.b - own);
+  }
+  void main(){
+    vec4 ag = texelFetch(uAgents, ivec2(gl_FragCoord.xy), 0);
+    vec2 p = ag.xy; float a = ag.z, sp = ag.w;
+    float f = sense(p, a, sp), l = sense(p, a + uSA, sp), r = sense(p, a - uSA, sp);
+    float rnd = hash(gl_FragCoord.xy + uFrame * 0.618);
+    if (f >= l && f >= r) {}
+    else if (f < l && f < r) a += (rnd - 0.5) * 2.0 * uRA;
+    else if (l > r) a += uRA * (0.5 + 0.5 * rnd);
+    else a -= uRA * (0.5 + 0.5 * rnd);
+    p += uSpeed * vec2(cos(a), sin(a));
+    p = mod(p, uSize);
+    o = vec4(p, a, sp);
+  }`;
+
+  // Deposit: one point per agent, additive into its species channel.
+  const DEP_VS = `#version 300 es
+  uniform sampler2D uAgents; uniform vec2 uSize; uniform int uW; uniform float uSpecies; out vec3 vCol;
+  void main(){
+    ivec2 id = ivec2(gl_VertexID % uW, gl_VertexID / uW);
+    vec4 ag = texelFetch(uAgents, id, 0);
+    float sp = ag.w;
+    vCol = (sp < 0.5 ? vec3(1,0,0) : sp < 1.5 ? vec3(0,1,0) : vec3(0,0,1)) * (sp < uSpecies ? 1.0 : 0.0);
+    gl_Position = vec4(ag.xy / uSize * 2.0 - 1.0, 0.0, 1.0);
+    gl_PointSize = 1.0;
+  }`;
+  const DEP_FS = `#version 300 es
+  precision highp float; in vec3 vCol; out vec4 o; uniform float uAmount;
+  void main(){ o = vec4(vCol * uAmount, 0.0); }`;
+
+  // Diffuse + decay, plus the pointer's food / poison brush.
+  const DIFF_FS = `#version 300 es
+  precision highp float; out vec4 o;
+  uniform sampler2D uTrail; uniform vec2 uSize; uniform float uDecay; uniform vec4 uBrush; // xy px, radius, amount
+  void main(){
+    vec2 px = 1.0 / uSize, uv = gl_FragCoord.xy * px;
+    vec4 s = vec4(0.0);
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) s += texture(uTrail, uv + vec2(x, y) * px);
+    vec4 t = mix(texture(uTrail, uv), s / 9.0, 0.6) * uDecay;
+    if (uBrush.z > 0.0) {
+      vec2 d = gl_FragCoord.xy - uBrush.xy; d -= uSize * round(d / uSize);
+      float k = exp(-dot(d, d) / (uBrush.z * uBrush.z));
+      t.rgb += vec3(uBrush.w * k);
+    }
+    o = clamp(t, vec4(-8.0), vec4(40.0));
+  }`;
+
+  // Display: each species channel through a cycling cosine palette, tone-mapped glow.
+  const SHOW_FS = `#version 300 es
+  precision highp float; out vec4 o;
+  uniform sampler2D uTrail; uniform vec2 uRes, uSize; uniform float uTime, uHue, uSpecies; uniform int uPal;
+  vec3 pal(float t){
+    if (uPal == 1) return 0.5 + 0.5 * cos(6.28318 * (vec3(1.0, 1.0, 0.5) * t + vec3(0.8, 0.9, 0.3)));
+    if (uPal == 2) return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.3, 0.2, 0.2)) * vec3(1.0, 0.8, 0.6));
+    return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)));
+  }
+  void main(){
+    // Cover the screen with the trail map, preserving its aspect.
+    vec2 uv = gl_FragCoord.xy / uRes;
+    vec4 t = max(texture(uTrail, uv), 0.0);
+    float drift = uTime * uHue * 0.05;
+    vec3 col = vec3(0.0);
+    col += pal(drift + 0.00) * t.r;
+    if (uSpecies > 1.5) col += pal(drift + 0.37) * t.g;
+    if (uSpecies > 2.5) col += pal(drift + 0.71) * t.b;
+    col = 1.0 - exp(-col * 0.55);
+    if (uPal == 3) col = vec3(dot(col, vec3(0.3, 0.55, 0.15)));
+    // Hot cores bloom toward white.
+    float heat = max(max(t.r, t.g), t.b);
+    col += vec3(1.0) * smoothstep(8.0, 30.0, heat) * 0.25;
+    o = vec4(col, 1.0);
+  }`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, "pos"); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const cache = {};
+    return { p, u: (n) => (n in cache ? cache[n] : (cache[n] = gl.getUniformLocation(p, n))) };
+  }
+  let PA, PD, PF, PS;
+  try {
+    PA = program(VS, AGENT_FS); PD = program(DEP_VS, DEP_FS); PF = program(VS, DIFF_FS); PS = program(VS, SHOW_FS);
+  } catch (e) { return fail("Shader error:\n" + e.message); }
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const vaoQuad = gl.createVertexArray(); gl.bindVertexArray(vaoQuad);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const vaoEmpty = gl.createVertexArray();
+
+  function tex(w, h, internal, format, type, data, filter) {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("Framebuffer incomplete for a float texture.");
+    return { t, f, w, h };
+  }
+  function del(pair) { if (!pair) return; for (const x of pair) { gl.deleteTexture(x.t); gl.deleteFramebuffer(x.f); } }
+
+  // Seeded PRNG so Reseed is reproducible per seed.
+  function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  let TW = 0, TH = 0, agents = null, trail = null, AW = 0;
+  function makeTrail() {
+    del(trail);
+    const scale = Math.min(1, 1600 / Math.max(canvas.width, canvas.height));
+    TW = Math.max(64, Math.round(canvas.width * scale)); TH = Math.max(64, Math.round(canvas.height * scale));
+    trail = [0, 1].map(() => tex(TW, TH, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, null, gl.LINEAR));
+  }
+  function seedAgents() {
+    del(agents);
+    AW = state.count;
+    const n = AW * AW, data = new Float32Array(n * 4), rnd = mulberry(state.seed * 2654435761);
+    const cx = TW / 2, cy = TH / 2, R = Math.min(TW, TH) * 0.36;
+    const layout = state.seed % 3;
+    for (let i = 0; i < n; i++) {
+      const sp = Math.floor(rnd() * state.species);
+      let x, y, a;
+      if (layout === 0) {        // each species starts as a ring arc facing inward
+        const th = (sp + rnd() * 0.9) / state.species * Math.PI * 2, r = R * (0.85 + 0.3 * rnd());
+        x = cx + Math.cos(th) * r; y = cy + Math.sin(th) * r; a = th + Math.PI + (rnd() - 0.5);
+      } else if (layout === 1) { // central disc, headings outward
+        const th = rnd() * Math.PI * 2, r = R * 0.5 * Math.sqrt(rnd());
+        x = cx + Math.cos(th) * r; y = cy + Math.sin(th) * r; a = th;
+      } else {                   // uniform scatter
+        x = rnd() * TW; y = rnd() * TH; a = rnd() * Math.PI * 2;
+      }
+      data.set([x, y, a, sp], i * 4);
+    }
+    agents = [0, 1].map(() => tex(AW, AW, gl.RGBA32F, gl.RGBA, gl.FLOAT, data, gl.NEAREST));
+    $("stat").textContent = `${(n / 1000).toFixed(0)}k agents`;
+  }
+  function clearTrail() { for (const t of trail) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.f); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); } }
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.floor(innerWidth * dpr), h = Math.floor(innerHeight * dpr);
+    if (w === canvas.width && h === canvas.height && trail) return;
+    canvas.width = w; canvas.height = h;
+    try { makeTrail(); seedAgents(); clearTrail(); } catch (e) { fail(e.message); }
+  }
+
+  // Pointer brush: food (positive) or poison (negative), in trail pixels.
+  const brush = { on: false, x: 0, y: 0, poison: false };
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  canvas.addEventListener("pointerdown", (e) => { brush.on = true; brush.poison = e.shiftKey || e.button === 2; move(e); canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener("pointermove", (e) => { if (brush.on) move(e); });
+  addEventListener("pointerup", () => { brush.on = false; });
+  function move(e) { brush.x = e.clientX / innerWidth * TW; brush.y = (1 - e.clientY / innerHeight) * TH; }
+
+  // ---------- Controls ----------
+  const sliders = ["sa", "sd", "ra", "speed", "repel", "decay", "hue"];
+  function sync() {
+    for (const id of sliders) {
+      const el = $(id); el.value = state[id];
+      el.parentElement.querySelector("output").textContent = (+state[id]).toFixed(id === "decay" ? 3 : 2);
+    }
+  }
+  for (const id of sliders) $(id).addEventListener("input", () => { state[id] = +$(id).value; $(id).parentElement.querySelector("output").textContent = (+state[id]).toFixed(id === "decay" ? 3 : 2); });
+  $("preset").onchange = () => { Object.assign(state, PRESETS[+$("preset").value]); sync(); };
+  $("pal").onchange = () => { state.pal = +$("pal").value; };
+  $("count").onchange = () => { state.count = +$("count").value; seedAgents(); };
+  $("species").onchange = () => { state.species = +$("species").value; seedAgents(); clearTrail(); };
+  $("reseed").onclick = () => { state.seed++; seedAgents(); clearTrail(); };
+  $("clear").onclick = clearTrail;
+  $("pause").onclick = () => { state.paused = !state.paused; $("pause").setAttribute("aria-pressed", state.paused); };
+  $("fs").onclick = async () => { try { await document.documentElement.requestFullscreen(); } catch { fail("Full screen is blocked here; open the page in its own tab."); } };
+  const panel = $("panel");
+  const toggleUI = () => { panel.classList.toggle("hidden"); $("recBtn").classList.toggle("hidden"); };
+  addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input,select,textarea")) return;
+    if (e.key === "h" || e.key === "H") toggleUI();
+    if (e.key === "r" || e.key === "R") $("recBtn").click();
+  });
+
+  // ---------- Loop ----------
+  let frameNo = 0, time = 0, last = performance.now();
+  function step() {
+    // 1. agents sense trail A and move into agents B
+    gl.useProgram(PA.p); gl.bindVertexArray(vaoQuad);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, agents[1].f); gl.viewport(0, 0, AW, AW);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agents[0].t);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, trail[0].t);
+    gl.uniform1i(PA.u("uAgents"), 0); gl.uniform1i(PA.u("uTrail"), 1);
+    gl.uniform2f(PA.u("uSize"), TW, TH);
+    gl.uniform1f(PA.u("uSA"), state.sa); gl.uniform1f(PA.u("uSD"), state.sd); gl.uniform1f(PA.u("uRA"), state.ra);
+    gl.uniform1f(PA.u("uSpeed"), state.speed); gl.uniform1f(PA.u("uRepel"), state.species > 1 ? state.repel : 0);
+    gl.uniform1f(PA.u("uFrame"), frameNo % 997);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    agents.reverse();
+    // 2. diffuse + decay trail A into trail B (plus brush)
+    gl.useProgram(PF.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, trail[1].f); gl.viewport(0, 0, TW, TH);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trail[0].t);
+    gl.uniform1i(PF.u("uTrail"), 0); gl.uniform2f(PF.u("uSize"), TW, TH); gl.uniform1f(PF.u("uDecay"), state.decay);
+    gl.uniform4f(PF.u("uBrush"), brush.x, brush.y, brush.on ? Math.min(TW, TH) * 0.025 : 0, brush.poison ? -6 : 2.5);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // 3. deposit agents additively into trail B
+    gl.useProgram(PD.p); gl.bindVertexArray(vaoEmpty);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agents[0].t);
+    gl.uniform1i(PD.u("uAgents"), 0); gl.uniform2f(PD.u("uSize"), TW, TH); gl.uniform1i(PD.u("uW"), AW);
+    gl.uniform1f(PD.u("uSpecies"), state.species); gl.uniform1f(PD.u("uAmount"), 0.9);
+    gl.drawArrays(gl.POINTS, 0, AW * AW);
+    gl.disable(gl.BLEND);
+    trail.reverse();
+    frameNo++;
+  }
+  function draw() {
+    gl.useProgram(PS.p); gl.bindVertexArray(vaoQuad);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trail[0].t);
+    gl.uniform1i(PS.u("uTrail"), 0); gl.uniform2f(PS.u("uRes"), canvas.width, canvas.height); gl.uniform2f(PS.u("uSize"), TW, TH);
+    gl.uniform1f(PS.u("uTime"), time); gl.uniform1f(PS.u("uHue"), state.hue); gl.uniform1f(PS.u("uSpecies"), state.species);
+    gl.uniform1i(PS.u("uPal"), state.pal);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (!state.paused) { time += dt; step(); if (!reduced) step(); }
+    draw();
+    requestAnimationFrame(loop);
+  }
+  addEventListener("resize", resize);
+  sync(); resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+<script>
+// Clip recorder: canvas only, saved through the lab shim's downloads.
+(() => {
+  const btn = document.getElementById("recBtn"), canvas = document.querySelector("canvas");
+  if (!canvas || !canvas.captureStream || !window.MediaRecorder) return;
+  const mime = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+  if (!mime) return;
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  let downloads = null, rec = null, chunks = [], t0 = 0, tick = null;
+  (async () => { if (window.claude && window.claude.use) { downloads = await window.claude.use("downloads"); if (downloads) btn.style.display = "block"; } })();
+  const stop = () => { if (rec && rec.state === "recording") rec.stop(); };
+  btn.onclick = () => {
+    if (rec && rec.state === "recording") return stop();
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 16e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearInterval(tick); btn.classList.remove("on"); btn.textContent = "Saving...";
+      try { await downloads.save({ filename: `neon-slime-mold-wars-${Date.now()}.${ext}`, data: new Blob(chunks, { type: mime }) }); btn.textContent = "Saved"; }
+      catch (e) { btn.textContent = "Save failed"; }
+      setTimeout(() => { btn.textContent = "Record clip"; }, 2000);
+    };
+    rec.start(250); t0 = performance.now(); btn.classList.add("on");
+    tick = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); btn.textContent = `Stop  ${s} s`; if (s >= 30) stop(); }, 250);
+  };
+})();
+</script>
+</body>
+</html>

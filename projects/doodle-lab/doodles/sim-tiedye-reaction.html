@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reaction-Diffusion Tie-Dye</title>
+<script src="../tools/lab-shim.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+  Reaction-Diffusion Tie-Dye: Gray-Scott model on the GPU.
+    du/dt = Du lap(u) - u v^2 + F (1 - u)
+    dv/dt = Dv lap(v) + u v^2 - (F + k) v
+  Du = 1.0, Dv = 0.5, dt = 1, 3x3 Laplacian (centre -1, edges 0.2, corners 0.05),
+  as in Karl Sims' reaction-diffusion tutorial. Regime (F, k) values follow the
+  Pearson (1993) / Munafo xmorphia classes and Sims' presets:
+    mitosis 0.0367/0.0649, coral 0.0545/0.062, worms 0.078/0.061,
+    mazes 0.029/0.057, chaos 0.026/0.051, solitons 0.030/0.062.
+  State lives in ping-pong RGBA32F textures (EXT_color_buffer_float), falling back
+  to RGBA16F, then to RGBA8 with u and v each packed into 16 bits.
+*/
+:root {
+  --panel-bg: rgba(18, 12, 28, 0.8);
+  --panel-fg: #f4eefc;
+  --panel-muted: #b9aecb;
+  --accent: #ff7ad9;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel-bg: rgba(18, 12, 28, 0.8); } }
+:root[data-theme="dark"] { --panel-bg: rgba(18, 12, 28, 0.8); }
+html, body { height: 100%; margin: 0; }
+body { background: #0c0714; overflow: hidden; font-family: "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.panel {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 70px); overflow: auto;
+  background: var(--panel-bg); color: var(--panel-fg);
+  border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 13px; line-height: 1.4; z-index: 5;
+}
+.panel summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary .count { font-weight: 400; color: var(--panel-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.body { padding: 2px 14px 14px; display: grid; gap: 9px; }
+label { display: grid; grid-template-columns: 88px 1fr 40px; align-items: center; gap: 8px; color: var(--panel-muted); }
+label.sel { grid-template-columns: 88px 1fr; }
+label.chk { grid-template-columns: 88px auto; justify-content: start; }
+label output { color: var(--panel-fg); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+select { min-width: 0; width: 100%; font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 4px 6px; }
+select option { background: #1d1428; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+button {
+  font: inherit; color: var(--panel-fg); background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+button.on { background: rgba(200, 30, 60, 0.85); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--panel-muted); font-size: 12px; }
+.err { color: #ffb4b4; background: rgba(120, 0, 0, 0.35); border-radius: 6px; padding: 8px; white-space: pre-wrap; font: 11px/1.35 ui-monospace, monospace; margin: 0; }
+body.noui .panel { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<details class="panel" id="panel" open>
+  <summary><span>Tie-Dye Reactor</span><span class="count" id="count"></span></summary>
+  <div class="body">
+    <label class="sel">Regime
+      <select id="regime">
+        <option value="drift" selected>Drift through all</option>
+        <option value="coral">Coral</option>
+        <option value="worms">Worms</option>
+        <option value="mazes">Mazes</option>
+        <option value="chaos">Chaos</option>
+        <option value="solitons">Spots (solitons)</option>
+        <option value="mitosis">Mitosis</option>
+        <option value="map">Parameter map</option>
+      </select>
+    </label>
+    <label class="sel">Palette
+      <select id="palette"></select>
+    </label>
+    <label>Speed <input type="range" id="speed" min="1" max="40" step="1" value="18"><output id="speedo"></output></label>
+    <label>Symmetry <input type="range" id="fold" min="0" max="12" step="1" value="6"><output id="foldo"></output></label>
+    <label>Colour spin <input type="range" id="spin" min="0" max="1" step="0.01" value="0.35"><output id="spino"></output></label>
+    <label>Bands <input type="range" id="bands" min="1" max="10" step="0.1" value="4.5"><output id="bandso"></output></label>
+    <label class="chk">Auto-drip <input type="checkbox" id="drip" checked></label>
+    <div class="row">
+      <button id="reseed">Reseed</button>
+      <button id="pause">Pause</button>
+      <button id="rec">Record</button>
+    </div>
+    <div class="hint" id="hint">Drag to paint catalyst. H hides the UI, R records, Space reseeds.</div>
+    <pre class="err" id="err" hidden></pre>
+  </div>
+</details>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("c");
+  const errBox = $("err");
+  function showError(msg) { errBox.hidden = false; errBox.textContent = msg; $("panel").open = true; console.warn(msg); }
+
+  const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, premultipliedAlpha: false });
+  if (!gl) { showError("WebGL2 is not available in this browser."); return; }
+
+  // ---- Storage format: 32F, then 16F, then 16-bit packed RGBA8 ----
+  let FMT;
+  if (gl.getExtension("EXT_color_buffer_float")) FMT = { internal: gl.RGBA32F, type: gl.FLOAT, packed: 0, name: "float32" };
+  else if (gl.getExtension("EXT_color_buffer_half_float")) FMT = { internal: gl.RGBA16F, type: gl.HALF_FLOAT, packed: 0, name: "float16" };
+  else FMT = { internal: gl.RGBA8, type: gl.UNSIGNED_BYTE, packed: 1, name: "packed 8-bit" };
+
+  const HEADER = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+#define PACKED ${FMT.packed}
+uniform sampler2D uState; uniform ivec2 uSize;
+float dec16(vec2 c) { return (c.x * 65280.0 + c.y * 255.0) / 65535.0; }
+vec2 enc16(float x) { float v = floor(clamp(x, 0.0, 1.0) * 65535.0 + 0.5); float hi = floor(v / 256.0); return vec2(hi, v - hi * 256.0) / 255.0; }
+vec2 decode(vec4 t) {
+#if PACKED
+  return vec2(dec16(t.rg), dec16(t.ba));
+#else
+  return t.rg;
+#endif
+}
+vec4 encode(vec2 uv) {
+#if PACKED
+  return vec4(enc16(uv.x), enc16(uv.y));
+#else
+  return vec4(uv, 0.0, 1.0);
+#endif
+}
+vec2 S(ivec2 p) { p = ivec2(mod(vec2(p), vec2(uSize))); return decode(texelFetch(uState, p, 0)); }
+`;
+
+  const VERT = `#version 300 es
+in vec2 aPos; void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  // One Gray-Scott step (Sims' discretisation), plus brush segments that paint v.
+  const SIM = HEADER + `
+uniform float uF, uK;
+uniform int uMap;              // 1 = Pearson parameter map across the domain
+uniform vec4 uSeg[6]; uniform float uRad[6]; uniform int uNSeg;
+out vec4 o;
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  vec2 d = abs(pa - ba * h); d = min(d, vec2(uSize) - d);   // toroidal wrap
+  return length(d);
+}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec2 c = S(p);
+  vec2 lap = -c
+    + 0.2 * (S(p + ivec2(1, 0)) + S(p - ivec2(1, 0)) + S(p + ivec2(0, 1)) + S(p - ivec2(0, 1)))
+    + 0.05 * (S(p + ivec2(1, 1)) + S(p + ivec2(-1, 1)) + S(p + ivec2(1, -1)) + S(p - ivec2(1, 1)));
+  float F = uF, K = uK;
+  if (uMap == 1) {
+    vec2 q = gl_FragCoord.xy / vec2(uSize);
+    // F rises bottom to top; k sweeps a window across the saddle-node line
+    // k = sqrt(F)/2 - F, where the patterned regimes live.
+    F = mix(0.008, 0.085, q.y); K = sqrt(F) * 0.5 - F + (q.x - 0.4) * 0.016;
+  }
+  float u = c.x, v = c.y, uvv = u * v * v;
+  u += 1.0 * lap.x - uvv + F * (1.0 - u);
+  v += 0.5 * lap.y + uvv - (F + K) * v;
+  for (int i = 0; i < 6; i++) {
+    if (i >= uNSeg) break;
+    float d = segDist(gl_FragCoord.xy, uSeg[i].xy, uSeg[i].zw);
+    float m = 1.0 - smoothstep(uRad[i] * 0.6, uRad[i], d);
+    v = mix(v, 0.5, m); u = mix(u, 0.25, m);
+  }
+  o = encode(clamp(vec2(u, v), 0.0, 1.0));
+}`;
+
+  // Seed: clear field (u=1, v=0) with seeded square/round blobs of catalyst.
+  const INIT = HEADER + `
+uniform vec3 uBlobs[64]; uniform int uNBlob; uniform float uSeed;
+out vec4 o;
+float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21) + uSeed); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+void main() {
+  vec2 p = gl_FragCoord.xy; float u = 1.0, v = 0.0;
+  for (int i = 0; i < 64; i++) {
+    if (i >= uNBlob) break;
+    vec2 d = abs(p - uBlobs[i].xy); d = min(d, vec2(uSize) - d);
+    float r = abs(uBlobs[i].z);
+    bool inside = uBlobs[i].z > 0.0 ? length(d) < r : max(d.x, d.y) < r;
+    if (inside) { u = 0.5; v = 0.25 + 0.1 * hash(p); }
+  }
+  o = encode(vec2(u, v));
+}`;
+
+  // Display: optional kaleidoscope fold, cosine palette on v with gradient-driven
+  // hue shift, embossed specular lighting so the chemistry reads as glossy dye.
+  const SHOW = HEADER + `
+uniform vec2 uRes; uniform float uTime, uFold, uRot, uSpin, uBands;
+uniform vec3 uPa, uPb, uPc, uPd;
+out vec4 o;
+vec2 samp(vec2 sp) {
+  sp -= 0.5; vec2 f = fract(sp); ivec2 i = ivec2(floor(sp));
+  return mix(mix(S(i), S(i + ivec2(1, 0)), f.x), mix(S(i + ivec2(0, 1)), S(i + ivec2(1, 1)), f.x), f.y);
+}
+vec3 pal(float t) { return uPa + uPb * cos(6.2831853 * (uPc * t + uPd)); }
+void main() {
+  vec2 frag = gl_FragCoord.xy, c = 0.5 * uRes;
+  vec2 q = frag - c;
+  if (uFold > 0.5) {
+    float r = length(q), a = atan(q.y, q.x) + uRot, w = 6.2831853 / uFold;
+    a = mod(a, w); a = abs(a - 0.5 * w);
+    q = r * vec2(cos(a), sin(a));
+  }
+  vec2 sp = (q + c) / uRes * vec2(uSize);
+  vec2 s = samp(sp);
+  float e = 1.0;
+  float gx = samp(sp + vec2(e, 0.0)).y - samp(sp - vec2(e, 0.0)).y;
+  float gy = samp(sp + vec2(0.0, e)).y - samp(sp - vec2(0.0, e)).y;
+  vec2 g = vec2(gx, gy);
+  float v = s.y, u = s.x;
+  float rr = length(q) / length(c);
+  float t = v * uBands + (1.0 - u) * 0.6 + uTime * uSpin * 0.08 + rr * 0.35
+          + 0.25 * atan(g.y, g.x) / 6.2831853 * smoothstep(0.0, 0.04, length(g));
+  vec3 col = pal(t);
+  // Background (bare substrate) stays deep and tinted; dye glows.
+  float dye = smoothstep(0.02, 0.22, v);
+  // Bare substrate: a deep, slowly shifting wash of the complementary hue.
+  vec3 deep = pal(0.5 + uTime * uSpin * 0.03 + rr * 0.6) * vec3(0.22, 0.12, 0.3);
+  col = mix(deep, col, 0.15 + 0.85 * dye);
+  vec3 n = normalize(vec3(-g * 14.0, 1.0));
+  vec3 L = normalize(vec3(-0.45, 0.55, 0.7));
+  float diff = max(dot(n, L), 0.0);
+  float spec = pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), 28.0);
+  col = col * (0.45 + 0.75 * diff) + spec * 0.45 * dye;
+  float luma = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(luma), col, 1.4);                  // push saturation for the tie-dye look
+  col *= 1.0 - 0.35 * smoothstep(0.6, 1.4, rr);
+  o = vec4(pow(max(col, 0.0), vec3(0.95)), 1.0);
+}`;
+
+  function compile(type, src, name) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(`${name} shader: ${gl.getShaderInfoLog(s)}`);
+    return s;
+  }
+  function program(fs, name) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT, "vertex"));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs, name));
+    gl.bindAttribLocation(p, 0, "aPos"); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(`${name} link: ${gl.getProgramInfoLog(p)}`);
+    const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); const key = info.name.replace(/\[0\]$/, ""); u[key] = gl.getUniformLocation(p, info.name); }
+    return { p, u };
+  }
+  let simP, initP, showP;
+  try { simP = program(SIM, "simulation"); initP = program(INIT, "seed"); showP = program(SHOW, "display"); }
+  catch (e) { showError(String(e.message || e)); return; }
+
+  const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  // ---- Parameters ----
+  const REGIMES = {
+    coral: [0.0545, 0.062], worms: [0.078, 0.061], mazes: [0.029, 0.057],
+    chaos: [0.026, 0.051], solitons: [0.030, 0.062], mitosis: [0.0367, 0.0649],
+  };
+  const DRIFT = ["coral", "worms", "mazes", "chaos", "solitons", "mitosis"];
+  const PALETTES = [
+    { name: "Tie-dye", a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1, 1, 1], d: [0.0, 0.33, 0.67] },
+    { name: "Acid", a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1.0, 1.0, 0.5], d: [0.8, 0.9, 0.3] },
+    { name: "Oil slick", a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [2.0, 1.0, 0.0], d: [0.5, 0.2, 0.25] },
+    { name: "Ultraviolet", a: [0.55, 0.4, 0.6], b: [0.45, 0.4, 0.4], c: [1.0, 1.0, 1.0], d: [0.7, 0.9, 0.45] },
+    { name: "Sunset", a: [0.6, 0.45, 0.4], b: [0.4, 0.4, 0.35], c: [1.0, 0.7, 0.4], d: [0.0, 0.15, 0.2] },
+  ];
+  PALETTES.forEach((p, i) => { const o = document.createElement("option"); o.value = i; o.textContent = p.name; $("palette").appendChild(o); });
+
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) { $("speed").value = 4; $("spin").value = 0.05; $("fold").value = 0; }
+  const P = {};
+  function readParams() {
+    P.speed = +$("speed").value; P.fold = +$("fold").value; P.spin = +$("spin").value; P.bands = +$("bands").value;
+    P.palette = PALETTES[+$("palette").value]; P.regime = $("regime").value; P.drip = $("drip").checked;
+    $("speedo").textContent = P.speed; $("foldo").textContent = P.fold ? P.fold : "off";
+    $("spino").textContent = P.spin.toFixed(2); $("bandso").textContent = P.bands.toFixed(1);
+  }
+  ["speed", "fold", "spin", "bands", "palette", "regime", "drip"].forEach((id) => $(id).addEventListener("input", readParams));
+  readParams();
+
+  // ---- Seeded RNG ----
+  function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  let seed = (Math.random() * 1e9) | 0, rng = mulberry32(seed);
+
+  // ---- Textures ----
+  let W = 0, H = 0, tex = [], fbo = [], cur = 0, cssScale = 2;
+  function makeTex() {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, FMT.internal, W, H);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    return t;
+  }
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
+    // One cell per ~2.4 CSS pixels, capped so phones and 4K screens stay fast.
+    cssScale = Math.max(2.4, Math.sqrt((innerWidth * innerHeight) / 300000));
+    const nW = Math.ceil(innerWidth / cssScale), nH = Math.ceil(innerHeight / cssScale);
+    if (nW !== W || nH !== H || !tex.length) {
+      tex.forEach((t) => gl.deleteTexture(t)); fbo.forEach((f) => gl.deleteFramebuffer(f));
+      W = nW; H = nH; tex = [makeTex(), makeTex()];
+      fbo = tex.map((t) => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return f; });
+      const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+      if (st !== gl.FRAMEBUFFER_COMPLETE) showError(`Framebuffer incomplete (${FMT.name}): 0x${st.toString(16)}`);
+      reseed(false);
+    }
+  }
+
+  function reseed(newSeed = true) {
+    if (newSeed) seed = (rng() * 1e9) | 0;
+    rng = mulberry32(seed);
+    const blobs = new Float32Array(64 * 3); const n = 26 + ((rng() * 30) | 0);
+    for (let i = 0; i < n; i++) {
+      const r = 3 + rng() * 9;
+      blobs[i * 3] = rng() * W; blobs[i * 3 + 1] = rng() * H; blobs[i * 3 + 2] = rng() < 0.5 ? r : -r;
+    }
+    // Always put a blob at the centre so the kaleidoscope has something at once.
+    blobs[0] = W / 2 + 4; blobs[1] = H / 2 + 3; blobs[2] = 8;
+    gl.useProgram(initP.p);
+    gl.uniform3fv(initP.u.uBlobs, blobs); gl.uniform1i(initP.u.uNBlob, n);
+    gl.uniform1f(initP.u.uSeed, (seed % 1000) / 1000); gl.uniform2i(initP.u.uSize, W, H);
+    gl.viewport(0, 0, W, H);
+    for (let k = 0; k < 2; k++) { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[k]); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    cur = 0;
+    $("hint").textContent = `Seed ${seed}. Drag to paint catalyst. H hides the UI, R records, Space reseeds.`;
+  }
+
+  // ---- Feed/kill schedule ----
+  let simTime = 0;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  function currentFK() {
+    if (P.regime === "map") return { F: 0, K: 0, name: "Pearson map" };
+    if (P.regime !== "drift") { const [F, K] = REGIMES[P.regime]; return { F, K, name: P.regime }; }
+    const hold = 20, ph = simTime / hold, i = Math.floor(ph) % DRIFT.length, f = ph - Math.floor(ph);
+    const a = REGIMES[DRIFT[i]], b = REGIMES[DRIFT[(i + 1) % DRIFT.length]];
+    const m = f < 0.65 ? 0 : (f - 0.65) / 0.35, s = m * m * (3 - 2 * m);
+    return { F: lerp(a[0], b[0], s), K: lerp(a[1], b[1], s), name: s < 0.5 ? DRIFT[i] : DRIFT[(i + 1) % DRIFT.length] };
+  }
+
+  // ---- Pointer painting (mapped through the same fold as the display) ----
+  let rot = 0;
+  function screenToSim(clientX, clientY) {
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    let qx = clientX - cx, qy = (innerHeight - clientY) - cy;        // GL y is up
+    if (P.fold > 0) {
+      const r = Math.hypot(qx, qy), w = (Math.PI * 2) / P.fold;
+      let a = Math.atan2(qy, qx) + rot; a = ((a % w) + w) % w; a = Math.abs(a - w / 2);
+      qx = r * Math.cos(a); qy = r * Math.sin(a);
+    }
+    return [((qx + cx) / innerWidth) * W, ((qy + cy) / innerHeight) * H];
+  }
+  const pointers = new Map(), segs = [];
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const p = screenToSim(e.clientX, e.clientY);
+    pointers.set(e.pointerId, p); segs.push([p[0], p[1], p[0], p[1], 7]);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    const last = pointers.get(e.pointerId); if (!last) return;
+    let p = screenToSim(e.clientX, e.clientY);
+    // A fold boundary can make the mapped point jump; paint a dot rather than a long streak.
+    const a = Math.hypot(p[0] - last[0], p[1] - last[1]) > 30 ? p : last;
+    segs.push([a[0], a[1], p[0], p[1], 6]); pointers.set(e.pointerId, p);
+  });
+  const up = (e) => pointers.delete(e.pointerId);
+  canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
+
+  let nextDrip = 1.5;
+  function takeSegments() {
+    if (P.drip && simTime > nextDrip) {
+      nextDrip = simTime + 1.2 + rng() * 1.6;
+      const x = rng() * W, y = rng() * H; segs.push([x, y, x, y, 4 + rng() * 5]);
+    }
+    // Keep painting where fingers rest.
+    for (const p of pointers.values()) if (segs.length < 6) segs.push([p[0], p[1], p[0], p[1], 6]);
+    const out = segs.splice(0, 6);
+    segs.length = 0;
+    return out;
+  }
+
+  // ---- Frame loop ----
+  let running = true, last = performance.now(), fpsAcc = 0, fpsN = 0, fps = 0, clock = 0;
+  const segArr = new Float32Array(24), radArr = new Float32Array(6);
+  function frame(now) {
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; clock += dt;
+    fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+    if (!reduced) rot += dt * 0.05;
+    const fk = currentFK();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    if (running) {
+      simTime += dt;
+      const s = takeSegments();
+      gl.useProgram(simP.p); gl.viewport(0, 0, W, H);
+      gl.uniform2i(simP.u.uSize, W, H); gl.uniform1f(simP.u.uF, fk.F); gl.uniform1f(simP.u.uK, fk.K);
+      gl.uniform1i(simP.u.uMap, P.regime === "map" ? 1 : 0); gl.uniform1i(simP.u.uState, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      segArr.fill(0); radArr.fill(0);
+      s.forEach((g, i) => { segArr.set(g.slice(0, 4), i * 4); radArr[i] = g[4]; });
+      for (let i = 0; i < P.speed; i++) {
+        // Brushes act on the first few substeps of the frame only.
+        gl.uniform1i(simP.u.uNSeg, i < 3 ? s.length : 0);
+        if (i === 0) { gl.uniform4fv(simP.u.uSeg, segArr); gl.uniform1fv(simP.u.uRad, radArr); }
+        gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1 - cur]);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        cur = 1 - cur;
+      }
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.useProgram(showP.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+    const pl = P.palette;
+    gl.uniform1i(showP.u.uState, 0); gl.uniform2i(showP.u.uSize, W, H);
+    gl.uniform2f(showP.u.uRes, canvas.width, canvas.height); gl.uniform1f(showP.u.uTime, clock);
+    gl.uniform1f(showP.u.uFold, P.fold); gl.uniform1f(showP.u.uRot, rot);
+    gl.uniform1f(showP.u.uSpin, P.spin); gl.uniform1f(showP.u.uBands, P.bands);
+    gl.uniform3fv(showP.u.uPa, pl.a); gl.uniform3fv(showP.u.uPb, pl.b); gl.uniform3fv(showP.u.uPc, pl.c); gl.uniform3fv(showP.u.uPd, pl.d);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    $("count").textContent = fk.F ? `${fk.name} F ${fk.F.toFixed(4)} k ${fk.K.toFixed(4)} · ${fps} fps` : `${fk.name} · ${fps} fps`;
+    requestAnimationFrame(frame);
+  }
+
+  // ---- UI ----
+  $("reseed").onclick = () => reseed(true);
+  const setPause = (v) => { running = v; $("pause").textContent = running ? "Pause" : "Resume"; };
+  setPause(running);
+  $("pause").onclick = () => setPause(!running);
+  addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input,select,textarea")) return;
+    if (e.key === "h" || e.key === "H") document.body.classList.toggle("noui");
+    else if (e.key === "r" || e.key === "R") toggleRecord();
+    else if (e.code === "Space") { e.preventDefault(); reseed(true); }
+  });
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+  canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); showError("WebGL context lost. Reload the page to restart."); });
+
+  // ---- Recorder (canvas only; saved through the lab's downloads shim) ----
+  let rec = null, chunks = [], recTimer = null;
+  async function toggleRecord() {
+    if (rec && rec.state === "recording") { rec.stop(); return; }
+    if (!canvas.captureStream || !window.MediaRecorder) { showError("Recording is not supported in this browser."); return; }
+    const mime = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+    if (!mime) { showError("No supported video format for recording."); return; }
+    chunks = [];
+    rec = new MediaRecorder(canvas.captureStream(60), { mimeType: mime, videoBitsPerSecond: 16e6 });
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      clearTimeout(recTimer); $("rec").classList.remove("on"); $("rec").textContent = "Saving...";
+      const blob = new Blob(chunks, { type: mime }), ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      try { const d = await window.claude.use("downloads"); await d.save({ filename: `sim-tiedye-reaction-${stamp}.${ext}`, data: blob }); $("rec").textContent = "Saved"; }
+      catch (err) { $("rec").textContent = "Save failed"; }
+      setTimeout(() => { $("rec").textContent = "Record"; }, 2000);
+    };
+    rec.start(250); $("rec").classList.add("on"); $("rec").textContent = "Stop";
+    recTimer = setTimeout(() => rec.state === "recording" && rec.stop(), 30000);
+  }
+  $("rec").onclick = toggleRecord;
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

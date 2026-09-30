@@ -1,0 +1,15 @@
+{
+ "title": "Ink in Water",
+ "blurb": "Three stirrers trail luminous ink through a stable-fluids tank; vorticity keeps every eddy curling.",
+ "chain": "Ink in Water (fluid simulation) → Glow",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "simulation"
+ ],
+ "controls": "Knobs: Vorticity, Ink persistence, Stirrer strength, Morph · Drag to swirl the water · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#ink-in-water"
+}

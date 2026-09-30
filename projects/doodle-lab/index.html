@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Doodle Lab</title>
+<meta name="description" content="Tinkerbox test kitchen: interactive math, simulation and psychedelic one-offs.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500..700&family=Gochi+Hand&family=Shantell+Sans:ital,wght@0,400..700;1,400..500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8D%AA%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="./lab.css">
+</head>
+<body>
+<!-- Sketchbook scenery: all decorative, drawn as colored-pencil SVGs in ./art/. -->
+<div class="woods" aria-hidden="true"></div>
+<div class="edge edge-l" aria-hidden="true"></div>
+<div class="edge edge-r" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="masthead-text">
+    <a class="crumb" href="/">← Tinkerbox</a>
+    <p class="kicker">Tinkerbox · test kitchen</p>
+    <h1>Doodle <em>Lab</em></h1>
+    <p class="lede">Interactive one-offs: math, simulation and a little visual hot sauce. The keepers graduate into the Visual Synth pantry.</p>
+    <div class="counts" id="counts" aria-live="polite"></div>
+  </div>
+  <img class="grove" src="./art/grove.svg" alt="" aria-hidden="true" width="380" height="250">
+</header>
+
+<nav class="toolbar" aria-label="Filter doodles">
+  <label class="search"><span class="sr">Search doodles</span>
+    <input id="q" type="search" placeholder="Search titles, math, controls…" autocomplete="off">
+  </label>
+  <div class="chips" id="chips" role="group" aria-label="Tags"></div>
+</nav>
+
+<main id="trays"></main>
+
+<aside class="peek" id="peek" aria-label="Live preview" hidden>
+  <div class="peek-bar">
+    <div>
+      <p class="peek-kicker" id="peek-tray"></p>
+      <h2 id="peek-title"></h2>
+      <p class="peek-controls" id="peek-controls"></p>
+    </div>
+    <div class="peek-actions">
+      <a class="btn primary" id="peek-open" href="#">Open full screen ↗</a>
+      <button class="btn" id="peek-close" type="button">Close <kbd>Esc</kbd></button>
+    </div>
+  </div>
+  <iframe id="peek-frame" title="Doodle preview" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox allow-pointer-lock" allow="autoplay; fullscreen; midi"></iframe>
+</aside>
+
+<footer class="foot">
+  <p>Each doodle is one self-contained page in <code>projects/doodle-lab/</code>. Inside a doodle: <kbd>H</kbd> hides the controls, Record saves a clip to Downloads, and the chip in the corner brings you back here.</p>
+  <p><a href="./CONTRIBUTING.md" download>How to add a doodle</a></p>
+</footer>
+<div class="forest-band" aria-hidden="true"></div>
+
+<template id="card">
+  <article class="cookie">
+    <button class="plate" type="button">
+      <img alt="" loading="lazy" decoding="async">
+      <span class="foil" aria-hidden="true"></span>
+      <span class="peek-hint" aria-hidden="true">Peek live</span>
+    </button>
+    <div class="label">
+      <h3></h3>
+      <p class="blurb"></p>
+      <p class="chain"></p>
+      <p class="tech"></p>
+      <ul class="tags"></ul>
+      <div class="row">
+        <a class="btn primary play">Play</a>
+        <button class="btn peek-btn" type="button">Peek</button>
+      </div>
+    </div>
+  </article>
+</template>
+
+<script type="module" src="./lab.js"></script>
+</body>
+</html>

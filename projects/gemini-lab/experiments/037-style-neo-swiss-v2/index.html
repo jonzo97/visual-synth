@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinetic Modular Typographic Grid v2</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #070707;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    }
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #overlay {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 236px;
+      background: rgba(9, 9, 9, 0.92);
+      border: 1px solid rgba(242, 242, 238, 0.16);
+      border-radius: 4px;
+      padding: 14px 16px;
+      color: #f2f2ee;
+      font-size: 11px;
+      user-select: none;
+      z-index: 1000;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+    }
+    #overlay.hidden {
+      display: none !important;
+    }
+    #overlay h1 {
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #f2f2ee;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #ff2a1a;
+      line-height: 1.3;
+    }
+    .ctrl-group {
+      margin-bottom: 11px;
+    }
+    .ctrl-group:last-child {
+      margin-bottom: 0;
+    }
+    .ctrl-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #8e8e88;
+      font-size: 9.5px;
+      font-weight: 700;
+    }
+    .ctrl-val {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-weight: 700;
+      color: #ff2a1a;
+      font-size: 10px;
+    }
+    input[type="range"] {
+      display: block;
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #222222;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ff2a1a;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(255, 42, 26, 0.8);
+      transition: transform 0.1s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border: none;
+      border-radius: 50%;
+      background: #ff2a1a;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(255, 42, 26, 0.8);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div id="overlay">
+    <h1>Kinetic Modular Typographic Grid v2</h1>
+    <div class="ctrl-group">
+      <div class="ctrl-header">
+        <span>Tempo</span>
+        <span id="val-bpm" class="ctrl-val">76 BPM</span>
+      </div>
+      <input type="range" id="slider-bpm" min="40" max="160" step="1" value="76">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-header">
+        <span>Seam Shear</span>
+        <span id="val-misreg" class="ctrl-val">42 PX</span>
+      </div>
+      <input type="range" id="slider-misreg" min="0" max="80" step="1" value="42">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-header">
+        <span>Grid Density</span>
+        <span id="val-density" class="ctrl-val">4</span>
+      </div>
+      <input type="range" id="slider-density" min="2" max="6" step="1" value="4">
+    </div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let baseSeed = parseInt(urlParams.get('seed') || '1', 10);
+    if (isNaN(baseSeed)) baseSeed = 1;
+
+    function createRNG(s) {
+      let state = s >>> 0;
+      return function() {
+        state = (state + 0x6D2B79F5) | 0;
+        let t = Math.imul(state ^ (state >>> 15), 1 | state);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const MACRO_GLYPHS = ['&', '§', 'R', 'Q', 'Æ', 'B', 'K', 'Ø', '№', 'S', 'G', 'Z'];
+
+    const EDITORIAL_VOCAB = [
+      "KONSTRUKTION", "TYPOGRAPHIE", "PROPORTION", "DIAGRAMM",
+      "SEKUNDEN", "DYNAMIK", "MANIFEST", "ARCHIV", "KANON",
+      "MODULATION", "INTERVALL", "METRONOM", "RAUMFORM", "SYNTAX",
+      "ORDNUNG", "KINETIK", "STRUKTUR", "METRIK", "ELEMENT",
+      "ZEICHEN", "FLUXUS", "POLARITÄT", "MASSTAB", "GESTE",
+      "SPEKTRUM", "AKZIDENZ", "SCHNITT", "RASTER", "HORIZONT",
+      "VARIATION", "SEQUENZ", "KONTRAST", "RYTHMUS", "BALANCE"
+    ];
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+
+    const sliderBpm = document.getElementById('slider-bpm');
+    const sliderMisreg = document.getElementById('slider-misreg');
+    const sliderDensity = document.getElementById('slider-density');
+
+    const valBpm = document.getElementById('val-bpm');
+    const valMisreg = document.getElementById('val-misreg');
+    const valDensity = document.getElementById('val-density');
+
+    let bpm = parseFloat(sliderBpm.value);
+    let misregAmount = parseFloat(sliderMisreg.value);
+    let density = parseInt(sliderDensity.value, 10);
+    const redRatio = 0.32;
+
+    let viewWidth = 1280;
+    let viewHeight = 720;
+    let pointerX = -1;
+    let pointerY = -1;
+
+    function handleResize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      viewWidth = window.innerWidth;
+      viewHeight = window.innerHeight;
+      canvas.width = Math.floor(viewWidth * dpr);
+      canvas.height = Math.floor(viewHeight * dpr);
+      canvas.style.width = viewWidth + 'px';
+      canvas.style.height = viewHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        overlay.classList.toggle('hidden');
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      pointerX = Math.round(e.clientX);
+      pointerY = Math.round(e.clientY);
+    });
+
+    sliderBpm.addEventListener('input', (e) => {
+      bpm = parseFloat(e.target.value);
+      valBpm.textContent = bpm + ' BPM';
+    });
+
+    sliderMisreg.addEventListener('input', (e) => {
+      misregAmount = parseFloat(e.target.value);
+      valMisreg.textContent = Math.round(misregAmount) + ' PX';
+    });
+
+    sliderDensity.addEventListener('input', (e) => {
+      density = parseInt(e.target.value, 10);
+      valDensity.textContent = density;
+      targetLayout = generateLayout(baseSeed, currentBeatIndex + 1, density, redRatio);
+      prevLayout = alignLayouts(prevLayout, targetLayout);
+    });
+
+    function generateLayout(seed, beatIndex, dens, rRatio) {
+      const rng = createRNG((seed * 1000003 + beatIndex * 2654435761) >>> 0);
+      const cellCounts = [7, 11, 15, 19, 23];
+      const targetCount = cellCounts[dens - 2] || 15;
+
+      let leaves = [{ x: 0, y: 0, w: 1, h: 1 }];
+
+      while (leaves.length < targetCount) {
+        let bestIdx = 0;
+        let maxScore = -1;
+        for (let i = 0; i < leaves.length; i++) {
+          const area = leaves[i].w * leaves[i].h;
+          const score = area * (0.65 + rng() * 0.7);
+          if (score > maxScore) {
+            maxScore = score;
+            bestIdx = i;
+          }
+        }
+
+        const b = leaves.splice(bestIdx, 1)[0];
+        let splitDir;
+        if (b.w / b.h > 1.45) splitDir = 'v';
+        else if (b.h / b.w > 1.45) splitDir = 'h';
+        else splitDir = rng() < 0.5 ? 'v' : 'h';
+
+        const ratios = [0.24, 0.382, 0.5, 0.618, 0.76];
+        const r = ratios[Math.floor(rng() * ratios.length)];
+
+        if (splitDir === 'v') {
+          leaves.push({ x: b.x, y: b.y, w: b.w * r, h: b.h });
+          leaves.push({ x: b.x + b.w * r, y: b.y, w: b.w * (1 - r), h: b.h });
+        } else {
+          leaves.push({ x: b.x, y: b.y, w: b.w, h: b.h * r });
+          leaves.push({ x: b.x, y: b.y + b.h * r, w: b.w, h: b.h * (1 - r) });
+        }
+      }
+
+      leaves.sort((a, b) => (Math.floor(a.y * 3) * 10 + a.x) - (Math.floor(b.y * 3) * 10 + b.x));
+
+      const shuffledWords = [...EDITORIAL_VOCAB];
+      for (let i = shuffledWords.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        const temp = shuffledWords[i];
+        shuffledWords[i] = shuffledWords[j];
+        shuffledWords[j] = temp;
+      }
+      let wordPointer = 0;
+
+      const semanticRoles = [
+        'HERO_WORD', 'DIAGONAL_SPLIT', 'SCREEN_ROSETTE', 'OPTICAL_GAUGE',
+        'VERNIER_CALIPER', 'SPECIMEN_LADDER', 'REGISTRATION_TARGET',
+        'CADENCE_METRIC', 'ACCENT_INDEX'
+      ];
+      let roleIdx = 0;
+
+      return leaves.map((leaf, idx) => {
+        const isRed = rng() < rRatio;
+        const area = leaf.w * leaf.h;
+
+        let role;
+        if (idx === 0) {
+          role = 'HERO_WORD';
+        } else if (idx === 1 || (idx === 3 && rng() < 0.5)) {
+          role = 'DIAGONAL_SPLIT';
+        } else if (area > 0.12 && rng() < 0.45) {
+          role = 'HERO_WORD';
+        } else {
+          role = semanticRoles[(roleIdx++) % semanticRoles.length];
+        }
+
+        let bgColor, fgColor, accentColor, macroColor, borderColor;
+        if (isRed) {
+          bgColor = '#ff2a1a';
+          fgColor = rng() < 0.7 ? '#0a0a0a' : '#f2f2ee';
+          accentColor = '#f2f2ee';
+          macroColor = rng() < 0.65 ? '#0a0a0a' : '#f2f2ee';
+          borderColor = 'rgba(0, 0, 0, 0.28)';
+        } else {
+          const isWhite = rng() < 0.26;
+          if (isWhite) {
+            bgColor = '#f2f2ee';
+            fgColor = '#0a0a0a';
+            accentColor = '#ff2a1a';
+            macroColor = rng() < 0.65 ? '#ff2a1a' : '#0a0a0a';
+            borderColor = 'rgba(0, 0, 0, 0.18)';
+          } else {
+            bgColor = rng() < 0.55 ? '#0a0a0a' : '#141414';
+            fgColor = '#f2f2ee';
+            accentColor = rng() < 0.45 ? '#ff2a1a' : '#8e8e88';
+            macroColor = rng() < 0.68 ? '#ff2a1a' : '#f2f2ee';
+            borderColor = 'rgba(242, 242, 238, 0.12)';
+          }
+        }
+
+        const tags = ['01', '02', '03', 'A1', 'B4', 'X8', 'Z9', 'M3'];
+        const secCodes = ['SEC. 01', 'MOD. A', 'SYS. 4', 'TYP. 8', 'REF. 20', 'SPEC. 9'];
+
+        const sliceAngle = rng() * Math.PI * 2;
+        const overshoot = 1.25 + rng() * 0.32;
+        const tau = Math.min(0.28, (((leaf.x * 1.5 + leaf.y * 1.8) * 0.28) % 0.28));
+
+        return {
+          x: leaf.x,
+          y: leaf.y,
+          w: leaf.w,
+          h: leaf.h,
+          role,
+          word: shuffledWords[(wordPointer++) % shuffledWords.length],
+          num: String(Math.floor(rng() * 98 + 1)).padStart(2, '0'),
+          tag: tags[Math.floor(rng() * tags.length)],
+          secCode: secCodes[Math.floor(rng() * secCodes.length)],
+          bgColor,
+          fgColor,
+          accentColor,
+          macroColor,
+          borderColor,
+          sliceAngle,
+          overshoot,
+          tau
+        };
+      });
+    }
+
+    function alignLayouts(from, to) {
+      const res = [];
+      const maxLen = Math.max(from.length, to.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < from.length) {
+          res.push({ ...from[i] });
+        } else {
+          const t = to[i];
+          res.push({
+            ...t,
+            x: t.x + t.w * 0.48,
+            y: t.y + t.h * 0.48,
+            w: 0.005,
+            h: 0.005
+          });
+        }
+      }
+      return res;
+    }
+
+    let lastTimestamp = performance.now();
+    let beatAccumulator = 0;
+    let currentBeatIndex = 0;
+
+    let prevLayout = generateLayout(baseSeed, 0, density, redRatio);
+    let targetLayout = generateLayout(baseSeed, 1, density, redRatio);
+
+    function getCellProgress(beatProgress, tau) {
+      if (beatProgress <= tau) return 0;
+      const dur = 1.0 - tau;
+      return Math.min(1, (beatProgress - tau) / dur);
+    }
+
+    function snapEase(t, overshoot) {
+      const snapDuration = 0.40;
+      if (t >= snapDuration) return 1;
+      const p = t / snapDuration;
+      const s = overshoot || 1.35;
+      const p1 = p - 1;
+      return p1 * p1 * ((s + 1) * p1 + s) + 1;
+    }
+
+    function getMacroFontSize(glyph, posterW, posterH) {
+      const targetW = posterW * 0.78;
+      const targetH = posterH * 0.90;
+      const baseSize = 400;
+      ctx.font = `900 ${baseSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Arial Black", Arial, sans-serif`;
+      const m = ctx.measureText(glyph);
+      const gw = Math.max(100, m.width);
+      const gh = (m.actualBoundingBoxAscent && m.actualBoundingBoxDescent)
+        ? (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent)
+        : (baseSize * 0.74);
+      const scale = Math.min(targetW / gw, targetH / gh);
+      return Math.max(120, Math.floor(baseSize * scale));
+    }
+
+    function drawScreenRosette(px, py, pw, ph, active) {
+      const r = Math.min(pw, ph) * 0.28;
+      if (r < 10) return;
+      const cx = px + pw * 0.5;
+      const cy = py + ph * 0.52;
+
+      ctx.save();
+      ctx.strokeStyle = active.accentColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const angles = [15, 45, 75, 90];
+      const spin = (window.__frames * 0.015) % (Math.PI * 2);
+      for (let a = 0; a < angles.length; a++) {
+        const rad = (angles[a] * Math.PI / 180) + spin;
+        ctx.beginPath();
+        ctx.moveTo(cx - Math.cos(rad) * r, cy - Math.sin(rad) * r);
+        ctx.lineTo(cx + Math.cos(rad) * r, cy + Math.sin(rad) * r);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = active.fgColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('LPI 150 // ANGLE 75°', cx, py + 8);
+
+      ctx.font = '600 7.5px monospace';
+      ctx.fillStyle = active.accentColor;
+      ctx.fillText('PLATE C-M-Y-K', cx, py + ph - 16);
+      ctx.restore();
+    }
+
+    function drawOpticalGauge(px, py, pw, ph, active) {
+      if (ph < 35 || pw < 45) return;
+      ctx.save();
+      const topY = py + 24;
+      const botY = py + ph - 14;
+      const spanH = botY - topY;
+      if (spanH <= 12) { ctx.restore(); return; }
+
+      const capY = topY + spanH * 0.15;
+      const xHtY = topY + spanH * 0.45;
+      const baseLineY = topY + spanH * 0.78;
+
+      ctx.strokeStyle = active.accentColor;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+
+      const drawGuideline = (gy, label) => {
+        ctx.beginPath();
+        ctx.moveTo(px + 8, gy);
+        ctx.lineTo(px + pw - 8, gy);
+        ctx.stroke();
+
+        ctx.fillStyle = active.fgColor;
+        ctx.font = '700 7.5px monospace';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(label, px + pw - 10, gy - 2);
+      };
+
+      drawGuideline(capY, 'CAP 720');
+      drawGuideline(xHtY, 'X-HT 514');
+      drawGuideline(baseLineY, 'BASE 000');
+
+      ctx.setLineDash([]);
+      ctx.strokeStyle = active.fgColor;
+      ctx.beginPath();
+      ctx.moveTo(px + 14, capY);
+      ctx.lineTo(px + 14, baseLineY);
+      ctx.stroke();
+
+      ctx.fillStyle = active.accentColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('EM: 1000 UPM // TRACK: -12‰', px + 10, py + 8);
+      ctx.restore();
+    }
+
+    function drawVernierCaliper(px, py, pw, ph, active) {
+      if (pw < 50 || ph < 26) return;
+      ctx.save();
+      const midY = py + ph * 0.52;
+
+      ctx.strokeStyle = active.accentColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 10, midY);
+      ctx.lineTo(px + pw - 10, midY);
+      ctx.stroke();
+
+      const tickCount = Math.floor((pw - 24) / 6);
+      for (let t = 0; t <= tickCount; t++) {
+        const tx = px + 12 + t * 6;
+        const th = (t % 5 === 0) ? 9 : 4;
+        ctx.beginPath();
+        ctx.moveTo(tx, midY);
+        ctx.lineTo(tx, midY - th);
+        ctx.stroke();
+      }
+
+      const jawX = px + 12 + ((window.__frames * 0.8) % Math.max(10, pw - 36));
+      ctx.strokeStyle = '#ff2a1a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(jawX, midY - 12);
+      ctx.lineTo(jawX, midY + 12);
+      ctx.stroke();
+
+      ctx.fillStyle = active.fgColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`VERNIER: Δ ${(jawX - px).toFixed(1)} mm`, px + 10, py + 8);
+
+      ctx.font = '600 7px monospace';
+      ctx.fillStyle = active.accentColor;
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('CALIBRATED ±0.002 // DIN 862', px + 10, py + ph - 8);
+      ctx.restore();
+    }
+
+    function drawSpecimenLadder(px, py, pw, ph, active) {
+      if (ph < 40 || pw < 45) return;
+      ctx.save();
+      ctx.fillStyle = active.accentColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('TYPE SPECIMEN SCALE', px + 10, py + 8);
+
+      const items = [
+        { pt: 6, text: '6 PT AKZIDENZ' },
+        { pt: 9, text: '9 PT KINETIK' },
+        { pt: 14, text: '14 PT FORM' },
+        { pt: 20, text: '20 PT RAUM' }
+      ];
+
+      let curY = py + 22;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (curY + it.pt > py + ph - 8) break;
+        ctx.fillStyle = active.fgColor;
+        ctx.font = `800 ${it.pt}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(it.text, px + 10, curY);
+
+        ctx.fillStyle = active.accentColor;
+        ctx.font = '700 7px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${it.pt} PT`, px + pw - 10, curY + 2);
+
+        curY += it.pt + 5;
+        if (i < items.length - 1) {
+          ctx.strokeStyle = active.accentColor;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(px + 10, curY - 2);
+          ctx.lineTo(px + pw - 10, curY - 2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawRegistrationTarget(px, py, pw, ph, active) {
+      if (pw < 24 || ph < 24) return;
+      ctx.save();
+      const cx = px + pw * 0.5;
+      const cy = py + ph * 0.52;
+      const r = Math.min(pw, ph) * 0.28;
+
+      ctx.fillStyle = active.fgColor;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, 0, Math.PI * 0.5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, Math.PI, Math.PI * 1.5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = active.fgColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = active.accentColor;
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 1.3, cy);
+      ctx.lineTo(cx + r * 1.3, cy);
+      ctx.moveTo(cx, cy - r * 1.3);
+      ctx.lineTo(cx, cy + r * 1.3);
+      ctx.stroke();
+
+      ctx.fillStyle = active.accentColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('REG. MARK // PASS 01', cx, py + 8);
+      ctx.restore();
+    }
+
+    function drawCadenceMetric(px, py, pw, ph, active) {
+      if (pw < 35 || ph < 26) return;
+      ctx.save();
+      ctx.fillStyle = active.accentColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('CADENCE // HARMONIC', px + 10, py + 8);
+
+      const barCount = Math.min(14, Math.max(5, Math.floor((pw - 24) / 7)));
+      const barW = (pw - 24) / barCount - 2;
+      const maxH = Math.max(10, ph - 38);
+
+      for (let b = 0; b < barCount; b++) {
+        const pulse = (Math.sin(window.__frames * 0.14 + b * 0.75) * 0.35 +
+                       Math.cos(window.__frames * 0.07 + b * 1.1) * 0.25 + 0.4) * maxH;
+        ctx.fillStyle = (b % 3 === 0) ? '#ff2a1a' : active.fgColor;
+        ctx.fillRect(px + 12 + b * (barW + 2), py + ph - 12 - pulse, barW, pulse);
+
+        ctx.fillStyle = active.accentColor;
+        ctx.fillRect(px + 12 + b * (barW + 2), py + ph - 15 - pulse, barW, 1.5);
+      }
+      ctx.restore();
+    }
+
+    function drawAccentIndex(px, py, pw, ph, active) {
+      ctx.save();
+      const fontSize = Math.floor(Math.min(pw * 0.62, ph * 0.65));
+      ctx.font = `900 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+      ctx.fillStyle = active.fgColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(active.num, px + pw * 0.5, py + ph * 0.52);
+
+      ctx.fillStyle = active.accentColor;
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`§ INDEX ${active.num}`, px + 10, py + 10);
+
+      ctx.textAlign = 'right';
+      ctx.fillText('ZÜRICH 1968', px + pw - 10, py + 10);
+      ctx.restore();
+    }
+
+    function drawHeroWord(px, py, pw, ph, active) {
+      ctx.save();
+      ctx.fillStyle = active.accentColor;
+      ctx.font = '700 8.5px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(active.secCode + ' // ' + active.tag, px + 8, py + 8);
+
+      const isVertical = ph > pw * 1.55;
+      ctx.font = '900 100px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+      const textW = ctx.measureText(active.word).width;
+      const targetW = isVertical ? ph * 0.84 : pw * 0.84;
+      const targetH = isVertical ? pw * 0.72 : ph * 0.72;
+      const scale = Math.min(targetW / textW, targetH / 72);
+      const fontSize = Math.max(9, Math.floor(100 * scale));
+
+      ctx.font = `900 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+      ctx.fillStyle = active.fgColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      if (isVertical) {
+        ctx.save();
+        ctx.translate(px + pw * 0.5, py + ph * 0.5);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText(active.word, 0, 0);
+        ctx.restore();
+      } else {
+        ctx.fillText(active.word, px + pw * 0.5, py + ph * 0.52 + fontSize * 0.04);
+      }
+      ctx.restore();
+    }
+
+    function drawDiagonalSplit(px, py, pw, ph, active, macroGlyph, macroFont, macroCenterX, macroCenterY, sliceX, sliceY) {
+      // Triangle 1: Upper-left (Vermilion)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + pw, py);
+      ctx.lineTo(px, py + ph);
+      ctx.closePath();
+      ctx.clip();
+
+      ctx.fillStyle = '#ff2a1a';
+      ctx.fillRect(px, py, pw, ph);
+
+      ctx.fillStyle = '#0a0a0a';
+      ctx.font = macroFont;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(macroGlyph, macroCenterX + sliceX, macroCenterY + sliceY);
+
+      ctx.fillStyle = '#f2f2ee';
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('∠ 45.0° // VEC.A', px + 10, py + 10);
+      ctx.restore();
+
+      // Triangle 2: Lower-right (Pitch Black)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(px + pw, py);
+      ctx.lineTo(px + pw, py + ph);
+      ctx.lineTo(px, py + ph);
+      ctx.closePath();
+      ctx.clip();
+
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(px, py, pw, ph);
+
+      ctx.fillStyle = '#ff2a1a';
+      ctx.font = macroFont;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(macroGlyph, macroCenterX + sliceX, macroCenterY + sliceY);
+
+      ctx.fillStyle = '#f2f2ee';
+      ctx.font = '700 8px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('VEC.B // DIN 16507', px + pw - 10, py + ph - 10);
+      ctx.restore();
+
+      // Diagonal Dividing Hairline with graduation marks
+      ctx.save();
+      ctx.strokeStyle = '#f2f2ee';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(px + pw, py);
+      ctx.lineTo(px, py + ph);
+      ctx.stroke();
+
+      const steps = 6;
+      for (let s = 1; s < steps; s++) {
+        const sx = px + pw - (pw / steps) * s;
+        const sy = py + (ph / steps) * s;
+        ctx.beginPath();
+        ctx.moveTo(sx - 3, sy - 3);
+        ctx.lineTo(sx + 3, sy + 3);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function draw(beatProgress) {
+      ctx.fillStyle = '#070707';
+      ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+      const marginX = Math.round(viewWidth * 0.042);
+      const marginY = Math.round(viewHeight * 0.062);
+      const posterW = Math.round(viewWidth - marginX * 2);
+      const posterH = Math.round(viewHeight - marginY * 2);
+      const posterX = marginX;
+      const posterY = marginY;
+      const gutter = Math.max(4, Math.round(Math.min(viewWidth, viewHeight) * 0.007));
+
+      // Header Swiss Typography & Telemetry
+      ctx.fillStyle = '#8e8e88';
+      ctx.font = '700 9.5px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('SWISS INTERNATIONAL STYLE // KINETIC MODULAR GRID V2', posterX, posterY - 9);
+
+      ctx.textAlign = 'right';
+      const quarter = Math.floor(beatProgress * 4);
+      const beatDots = ['○', '○', '○', '○'];
+      beatDots[quarter] = '●';
+      ctx.fillText(`BEAT: ${beatDots.join(' ')}  TEMPO: ${bpm} BPM  SHEAR: ${Math.round(misregAmount)}PX  F: ${window.__frames}`, posterX + posterW, posterY - 9);
+
+      // Corner Registration Crosses
+      const crossSize = 7;
+      ctx.strokeStyle = '#8e8e88';
+      ctx.lineWidth = 1;
+      const corners = [
+        [posterX - 9, posterY - 9],
+        [posterX + posterW + 9, posterY - 9],
+        [posterX - 9, posterY + posterH + 9],
+        [posterX + posterW + 9, posterY + posterH + 9]
+      ];
+      for (let i = 0; i < corners.length; i++) {
+        const [cx, cy] = corners[i];
+        ctx.beginPath();
+        ctx.moveTo(cx - crossSize, cy);
+        ctx.lineTo(cx + crossSize, cy);
+        ctx.moveTo(cx, cy - crossSize);
+        ctx.lineTo(cx, cy + crossSize);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Macro-glyph definition
+      const macroCenterX = posterX + posterW * 0.5;
+      const macroCenterY = posterY + posterH * 0.51;
+      const glyphIndex = (baseSeed * 5 + Math.floor(currentBeatIndex / 4)) % MACRO_GLYPHS.length;
+      const macroGlyph = MACRO_GLYPHS[glyphIndex];
+      const macroFontSize = getMacroFontSize(macroGlyph, posterW, posterH);
+      const macroFont = `900 ${macroFontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Arial Black", Arial, sans-serif`;
+
+      const maxLen = Math.max(prevLayout.length, targetLayout.length);
+
+      for (let i = 0; i < maxLen; i++) {
+        const p = prevLayout[i] || targetLayout[i];
+        const n = targetLayout[i] || { ...p, w: 0.001, h: 0.001 };
+
+        const cellTau = n.tau !== undefined ? n.tau : 0;
+        const cellT = getCellProgress(beatProgress, cellTau);
+        const cellEase = snapEase(cellT, n.overshoot || 1.35);
+
+        const lx = p.x + (n.x - p.x) * cellEase;
+        const ly = p.y + (n.y - p.y) * cellEase;
+        const lw = p.w + (n.w - p.w) * cellEase;
+        const lh = p.h + (n.h - p.h) * cellEase;
+
+        const active = cellEase > 0.5 ? n : p;
+
+        const px = Math.round(posterX + lx * posterW + gutter * 0.5);
+        const py = Math.round(posterY + ly * posterH + gutter * 0.5);
+        const pw = Math.max(2, Math.round(lw * posterW - gutter));
+        const ph = Math.max(2, Math.round(lh * posterH - gutter));
+
+        // Screenprint misregistration seam shear
+        let misregFactor = 0;
+        if (cellT < 0.44) {
+          const phs = cellT / 0.44;
+          misregFactor = Math.sin(phs * Math.PI) * Math.cos(phs * Math.PI * 2.2) * (1 - phs);
+        }
+        const misregDist = misregAmount * misregFactor;
+        const sliceX = Math.cos(active.sliceAngle) * misregDist;
+        const sliceY = Math.sin(active.sliceAngle) * misregDist;
+
+        if (active.role === 'DIAGONAL_SPLIT') {
+          drawDiagonalSplit(px, py, pw, ph, active, macroGlyph, macroFont, macroCenterX, macroCenterY, sliceX, sliceY);
+          continue;
+        }
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py, pw, ph);
+        ctx.clip();
+
+        // Cell Background
+        ctx.fillStyle = active.bgColor;
+        ctx.fillRect(px, py, pw, ph);
+
+        // Screenprint secondary misregistration plate ghost
+        if (Math.abs(misregDist) > 2) {
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = active.bgColor === '#ff2a1a' ? '#f2f2ee' : '#ff2a1a';
+          ctx.font = macroFont;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(macroGlyph, macroCenterX - sliceX * 0.6, macroCenterY - sliceY * 0.6);
+          ctx.restore();
+        }
+
+        // Primary Canvas-Spanning Macro-Glyph Slice
+        ctx.fillStyle = active.macroColor;
+        ctx.font = macroFont;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(macroGlyph, macroCenterX + sliceX, macroCenterY + sliceY);
+
+        // Cell Semantic Content Overlay
+        switch (active.role) {
+          case 'HERO_WORD':
+            drawHeroWord(px, py, pw, ph, active);
+            break;
+          case 'OPTICAL_GAUGE':
+            drawOpticalGauge(px, py, pw, ph, active);
+            break;
+          case 'SCREEN_ROSETTE':
+            drawScreenRosette(px, py, pw, ph, active);
+            break;
+          case 'VERNIER_CALIPER':
+            drawVernierCaliper(px, py, pw, ph, active);
+            break;
+          case 'SPECIMEN_LADDER':
+            drawSpecimenLadder(px, py, pw, ph, active);
+            break;
+          case 'REGISTRATION_TARGET':
+            drawRegistrationTarget(px, py, pw, ph, active);
+            break;
+          case 'CADENCE_METRIC':
+            drawCadenceMetric(px, py, pw, ph, active);
+            break;
+          case 'ACCENT_INDEX':
+            drawAccentIndex(px, py, pw, ph, active);
+            break;
+        }
+
+        // Module border edge
+        ctx.strokeStyle = active.borderColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+
+        ctx.restore();
+      }
+
+      // Footer Swiss Metadata & Telemetry Readouts
+      ctx.fillStyle = '#8e8e88';
+      ctx.font = '700 9.5px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('MAKRO-GLYPHENSYSTEM // FARBINVERSION & DRUCKRASTER', posterX, posterY + posterH + 9);
+
+      ctx.textAlign = 'right';
+      const scanX = ((window.__frames * 2.5) % posterW);
+      const curX = pointerX >= 0 ? pointerX : posterX + Math.round(scanX);
+      const curY = pointerY >= 0 ? pointerY : posterY + Math.round(posterH * 0.5);
+      ctx.fillText(`CUR: [${curX}, ${curY}] // ZÜRICH 1968 // SCAN ${scanX.toFixed(0)}`, posterX + posterW, posterY + posterH + 9);
+
+      // Micro scanning laser rule along bottom edge
+      ctx.strokeStyle = '#ff2a1a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(posterX + scanX, posterY + posterH + 2);
+      ctx.lineTo(posterX + Math.min(posterW, scanX + 28), posterY + posterH + 2);
+      ctx.stroke();
+    }
+
+    function animate(now) {
+      window.__frames++;
+
+      const dt = Math.min((now - lastTimestamp) / 1000, 0.1);
+      lastTimestamp = now;
+
+      beatAccumulator += dt * (bpm / 60);
+      const newBeatIndex = Math.floor(beatAccumulator);
+      const beatProgress = beatAccumulator - newBeatIndex;
+
+      if (newBeatIndex !== currentBeatIndex) {
+        currentBeatIndex = newBeatIndex;
+        prevLayout = targetLayout;
+        targetLayout = generateLayout(baseSeed, currentBeatIndex + 1, density, redRatio);
+        prevLayout = alignLayouts(prevLayout, targetLayout);
+      }
+
+      draw(beatProgress);
+
+      requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

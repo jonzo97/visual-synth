@@ -1,0 +1,15 @@
+{
+ "title": "Frost Fizz",
+ "blurb": "A chilled white can up close: brushed aluminium, torn silver scratches, condensation and carbonation streaming upward.",
+ "chain": "Frost Fizz",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "carbonation"
+ ],
+ "controls": "Knobs: Carbonation, Condensation, Scratch depth, Morph · Drag: light angle and bubble size · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#frost-fizz"
+}

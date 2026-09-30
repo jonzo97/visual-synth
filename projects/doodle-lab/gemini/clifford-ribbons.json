@@ -1,0 +1,15 @@
+{
+ "title": "Clifford Ribbons",
+ "blurb": "A Clifford strange attractor split into three drifting colour bands, splatted as millions of points with velocity blur and log tone mapping.",
+ "tags": [
+  "gemini",
+  "generator",
+  "attractor",
+  "luminous"
+ ],
+ "controls": "Sliders: Spectral Dispersion, Drift Speed, Atmospheric Depth · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/010-clifford-density-v2/index.html"
+}

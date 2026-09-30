@@ -1,0 +1,15 @@
+{
+ "title": "Acid Checker Garden",
+ "blurb": "The conformal grid of a rational function: every little square stays square while three zeros and two poles circle.",
+ "chain": "Complex Kaleidoscope → Glow",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "complex analysis"
+ ],
+ "controls": "Knobs: Zero / pole spread, Contour density, Colour cycle, Morph · Drag: left–right drifts the roots, up–down zooms · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#acid-checker-garden"
+}

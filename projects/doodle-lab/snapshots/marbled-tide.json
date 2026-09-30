@@ -1,0 +1,15 @@
+{
+ "title": "Marbled Tide",
+ "blurb": "Slow stirrers fold long-lived ink into bands, then Ink Marbling combs the whole tank once more.",
+ "chain": "Ink in Water (fluid simulation) → Ink Marbling",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "simulation"
+ ],
+ "controls": "Knobs: Stirrer speed, Ink veins, Vorticity, Morph · Drag: swirl; left–right sets marbling drag · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#marbled-tide"
+}

@@ -1,0 +1,12 @@
+{
+ "title": "Physarum Slime Mold",
+ "blurb": "Thousands of slime-mold agents lay and follow trails in a petri dish until a transport network emerges.",
+ "tags": [
+  "simulation",
+  "agents"
+ ],
+ "controls": "Tap to inoculate; sliders tune sensing and decay; H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "CPU agents on Canvas 2D"
+}

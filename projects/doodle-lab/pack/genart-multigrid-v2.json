@@ -1,0 +1,12 @@
+{
+ "title": "Multigrid Zellige",
+ "blurb": "Exact de Bruijn 3–11-fold quasiperiodic tilings in glazed ceramic, with strapwork or arcs.",
+ "tags": [
+  "math",
+  "tiling"
+ ],
+ "controls": "Drag to pan; phason sliders flip tiles; Space reseeds; H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "Canvas 2D, exact de Bruijn construction"
+}

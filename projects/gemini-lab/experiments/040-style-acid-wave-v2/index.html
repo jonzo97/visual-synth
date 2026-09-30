@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Domain Warped Liquid Chrome v2</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #030206;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #c {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+    #ui {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      background: rgba(5, 4, 10, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #f3f3f8;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 11px;
+      width: 256px;
+      z-index: 10;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75);
+      pointer-events: auto;
+    }
+    #ui h1 {
+      margin: 0 0 12px 0;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      color: #ffffff;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 6px;
+    }
+    .ctrl {
+      margin-bottom: 10px;
+    }
+    .ctrl:last-child {
+      margin-bottom: 0;
+    }
+    .ctrl-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      color: rgba(255, 255, 255, 0.82);
+    }
+    .val {
+      font-variant-numeric: tabular-nums;
+      color: #00f0ff;
+      font-weight: 500;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 2px;
+      outline: none;
+      margin: 4px 0;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #00f0ff;
+      box-shadow: 0 0 8px #00f0ff;
+      cursor: pointer;
+      border: none;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #00f0ff;
+      box-shadow: 0 0 8px #00f0ff;
+      cursor: pointer;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <h1>Domain Warped Liquid Chrome v2</h1>
+    <div class="ctrl">
+      <div class="ctrl-head">
+        <label for="scale">Blob Scale</label>
+        <span class="val" id="val_scale">1.1</span>
+      </div>
+      <input type="range" id="scale" min="0.5" max="2.2" step="0.05" value="1.1">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-head">
+        <label for="rim">Rim Iridescence</label>
+        <span class="val" id="val_rim">1.4</span>
+      </div>
+      <input type="range" id="rim" min="0.0" max="3.0" step="0.1" value="1.4">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-head">
+        <label for="ripple">Ripple Intensity</label>
+        <span class="val" id="val_ripple">1.2</span>
+      </div>
+      <input type="range" id="ripple" min="0.0" max="2.5" step="0.1" value="1.2">
+    </div>
+  </div>
+
+  <script>
+    window.__frames = 0;
+
+    // Deterministic Seeded PRNG (Mulberry32)
+    const urlParams = new URLSearchParams(window.location.search);
+    const parsedSeed = parseInt(urlParams.get('seed') || '1', 10);
+    const seed = isNaN(parsedSeed) ? 1 : parsedSeed;
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+    const prng = mulberry32(seed);
+    const seedOffset = prng() * 100.0;
+
+    // WebGL2 Context setup
+    const canvas = document.getElementById('c');
+    const gl = canvas.getContext('webgl2', {
+      powerPreference: 'high-performance',
+      antialias: false,
+      depth: false,
+      stencil: false
+    });
+
+    if (!gl) {
+      throw new Error('WebGL2 is not supported on this device/browser.');
+    }
+
+    const vsSource = `#version 300 es
+    in vec2 a_position;
+    void main() {
+      gl_Position = vec4(a_position, 0.0, 1.0);
+    }`;
+
+    const fsSource = `#version 300 es
+    precision highp float;
+
+    out vec4 fragColor;
+
+    uniform vec2 u_resolution;
+    uniform float u_time;
+    uniform float u_blob_scale;
+    uniform float u_rim_irid;
+    uniform float u_shock_amp;
+    uniform float u_seed;
+    uniform vec4 u_shockwaves[8]; // xy: center in p-space, z: spawn time, w: amplitude
+
+    mat2 rot(float a) {
+      float c = cos(a), s = sin(a);
+      return mat2(c, -s, s, c);
+    }
+
+    // Cosine thin-film palette: neon violet, cyan, lime, magenta transitions
+    vec3 iridPalette(float t) {
+      vec3 a = vec3(0.55, 0.45, 0.65);
+      vec3 b = vec3(0.45, 0.55, 0.35);
+      vec3 c = vec3(1.0, 1.0, 1.0);
+      vec3 d = vec3(0.05, 0.33, 0.65);
+      return a + b * cos(6.2831853 * (c * t + d));
+    }
+
+    // Concentric capillary ripple shockwaves
+    float getRipples(vec2 p) {
+      float rippleH = 0.0;
+      for (int i = 0; i < 8; i++) {
+        vec4 sw = u_shockwaves[i];
+        float amp = sw.w * u_shock_amp;
+        if (amp <= 0.001) continue;
+        float age = u_time - sw.z;
+        if (age <= 0.0 || age > 3.2) continue;
+
+        float dist = length(p - sw.xy);
+        float speed = 1.65;
+        float front = age * speed;
+        float dFront = dist - front;
+
+        float envDist = exp(-dFront * dFront * 16.0);
+        float envTime = exp(-age * 1.15);
+        float wave = sin(dFront * 32.0 - age * 9.5);
+
+        rippleH += wave * envDist * envTime * amp * 0.045;
+      }
+      return rippleH;
+    }
+
+    // Molten macro-blob domain warping
+    float macroField(vec2 p, out vec2 q, out vec2 r) {
+      float t = u_time * 0.16 + u_seed * 0.08;
+      vec2 pos = p * u_blob_scale;
+
+      mat2 m1 = rot(0.58 + u_seed * 0.04);
+      q = vec2(
+        sin(pos.x * 0.95 + pos.y * 0.72 + t * 0.45),
+        cos(-pos.x * 0.82 + pos.y * 1.05 - t * 0.38)
+      );
+      q += 0.42 * vec2(
+        sin((pos * m1).x * 1.35 - t * 0.52),
+        cos((pos * m1).y * 1.35 + t * 0.48)
+      );
+
+      mat2 m2 = rot(1.38);
+      vec2 pq = pos + 0.65 * q;
+      r = vec2(
+        sin(dot(pq * m2, vec2(1.15, -0.85)) + t * 0.4 + 1.2),
+        cos(dot(pq * m2, vec2(0.85, 1.15)) - t * 0.35 + 2.0)
+      );
+
+      vec2 pw = pos + 0.55 * r;
+      float b = 0.65 * (sin(pw.x * 0.9 + t * 0.28) * cos(pw.y * 0.85 - t * 0.22));
+      b += 0.38 * cos(dot(pw * m1, vec2(1.1, 0.75)) + t * 0.35);
+      b += 0.22 * sin(length(pw + q * 0.25) * 1.8 - t * 0.42);
+
+      return b;
+    }
+
+    // Full procedural height field
+    float getFullHeight(vec2 p, out float outBlobVal) {
+      vec2 q, r;
+      float b = macroField(p, q, r);
+      float b0 = -0.15;
+      float blobVal = smoothstep(b0, b0 + 0.45, b);
+      outBlobVal = blobVal;
+
+      // Rounded meniscus droplet dome
+      float h_macro = sqrt(max(0.0, blobVal)) * 0.52;
+
+      // Capillary ripples active on the molten mercury fluid
+      float ripples = getRipples(p) * smoothstep(0.08, 0.45, blobVal);
+
+      return h_macro + ripples;
+    }
+
+    // Screen-space central finite difference surface normal
+    vec3 calcNormal(vec2 p, out float h_center, out float blobVal) {
+      float eps = 2.0 / u_resolution.y;
+      h_center = getFullHeight(p, blobVal);
+      float dummy;
+      float h_r = getFullHeight(p + vec2(eps, 0.0), dummy);
+      float h_l = getFullHeight(p - vec2(eps, 0.0), dummy);
+      float h_u = getFullHeight(p + vec2(0.0, eps), dummy);
+      float h_d = getFullHeight(p - vec2(0.0, eps), dummy);
+
+      float slope = 2.4;
+      vec3 norm = vec3((h_l - h_r) * slope, (h_d - h_u) * slope, 2.0 * eps);
+      return normalize(norm);
+    }
+
+    // Studio HDR reflection environment
+    vec3 getMercuryReflection(vec3 R) {
+      // Obsidian deep studio base
+      vec3 col = vec3(0.02, 0.022, 0.038);
+
+      // Studio horizon gradient: dark reflective studio floor vs bright studio ceiling
+      float horizon = smoothstep(-0.25, 0.18, R.y);
+      vec3 floorCol = vec3(0.03, 0.032, 0.05);
+      vec3 ceilingCol = vec3(0.42, 0.46, 0.54);
+      col = mix(floorCol, ceilingCol, horizon);
+
+      // Key Studio Softbox: massive overhead rectangular light with soft falloff
+      vec3 keyDir = normalize(vec3(0.35, 0.82, 0.48));
+      float keyDot = max(0.0, dot(R, keyDir));
+      float keySoft = pow(keyDot, 10.0) * 0.6;
+      float keyHot = pow(keyDot, 160.0) * 2.8;
+      col += vec3(0.98, 0.99, 1.0) * (keySoft + keyHot);
+
+      // Rim Strip Light: cold electric cyan/white strip from left side
+      vec3 stripDir = normalize(vec3(-0.85, 0.28, 0.45));
+      float stripDot = max(0.0, dot(R, stripDir));
+      float stripSpec = pow(stripDot, 20.0) * 0.75 + pow(stripDot, 200.0) * 2.2;
+      col += vec3(0.72, 0.92, 1.0) * stripSpec;
+
+      // Subtle bottom-right kicker light
+      vec3 kickDir = normalize(vec3(0.3, -0.65, 0.7));
+      float kickDot = max(0.0, dot(R, kickDir));
+      col += vec3(0.75, 0.72, 0.8) * pow(kickDot, 28.0) * 0.45;
+
+      return col;
+    }
+
+    void main() {
+      vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+      vec2 p = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+      p *= 2.2;
+
+      float h, blobVal;
+      vec3 N = calcNormal(p, h, blobVal);
+
+      // Camera view vector and reflection vector
+      vec3 V = vec3(0.0, 0.0, 1.0);
+      vec3 R = reflect(-V, N);
+
+      float NdotV = clamp(N.z, 0.0, 1.0);
+
+      // Deep obsidian void base
+      vec3 obsidianPool = vec3(0.012, 0.010, 0.022);
+      obsidianPool *= (1.0 - 0.38 * dot(uv - 0.5, uv - 0.5));
+
+      // Mirror-smooth liquid chrome reflection
+      vec3 chromeSurface = getMercuryReflection(R);
+
+      // Restrict iridescent thin-film effect strictly to steep grazing Fresnel rims
+      float grazingRim = pow(clamp(1.0 - NdotV, 0.0, 1.0), 2.8);
+      grazingRim *= smoothstep(0.02, 0.28, blobVal);
+
+      float filmPhase = (1.0 - NdotV) * 5.2 + h * 3.5 + u_time * 0.12;
+      vec3 rimIridColor = iridPalette(filmPhase);
+
+      float iridStrength = grazingRim * u_rim_irid;
+
+      // Blend iridescence exclusively into grazing rim
+      chromeSurface = mix(chromeSurface, chromeSurface * 0.2 + rimIridColor * 1.35, clamp(iridStrength * 1.3, 0.0, 1.0));
+      chromeSurface += rimIridColor * pow(clamp(1.0 - NdotV, 0.0, 1.0), 4.2) * 2.2 * u_rim_irid;
+
+      // Blinding specular crest glints along wave ripples and crests
+      vec3 keyDir = normalize(vec3(0.35, 0.82, 0.48));
+      vec3 stripDir = normalize(vec3(-0.85, 0.28, 0.45));
+      float crestKey = pow(max(0.0, dot(R, keyDir)), 320.0);
+      float crestStrip = pow(max(0.0, dot(R, stripDir)), 220.0);
+      chromeSurface += vec3(1.0) * (crestKey * 4.2 + crestStrip * 2.8);
+
+      // Contrast between silent dark pools and molten chrome bodies
+      float blobMask = smoothstep(0.01, 0.18, blobVal);
+      vec3 finalCol = mix(obsidianPool, chromeSurface, blobMask);
+
+      // Subtle meniscus violet chromatic edge
+      float outerMeniscus = smoothstep(0.0, 0.05, blobVal) * (1.0 - smoothstep(0.05, 0.18, blobVal));
+      finalCol += vec3(0.18, 0.02, 0.38) * outerMeniscus * u_rim_irid;
+
+      // Filmic tonemapping: deep obsidian blacks, mirror silvers, pure white specular crests
+      finalCol = max(vec3(0.0), finalCol - vec3(0.005));
+      finalCol = finalCol / (finalCol + vec3(0.52)) * 1.48;
+
+      // Subtle studio vignette
+      vec2 vig = uv - 0.5;
+      finalCol *= (1.0 - 0.28 * dot(vig, vig));
+
+      fragColor = vec4(finalCol, 1.0);
+    }`;
+
+    function createShader(glCtx, type, source) {
+      const shader = glCtx.createShader(type);
+      glCtx.shaderSource(shader, source);
+      glCtx.compileShader(shader);
+      if (!glCtx.getShaderParameter(shader, glCtx.COMPILE_STATUS)) {
+        const info = glCtx.getShaderInfoLog(shader);
+        glCtx.deleteShader(shader);
+        throw new Error('Shader compilation failed: ' + info);
+      }
+      return shader;
+    }
+
+    const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const info = gl.getProgramInfoLog(program);
+      gl.deleteProgram(program);
+      throw new Error('Shader program linking failed: ' + info);
+    }
+
+    gl.useProgram(program);
+
+    // Full-screen quad
+    const quadVertices = new Float32Array([
+      -1.0, -1.0,
+       1.0, -1.0,
+      -1.0,  1.0,
+      -1.0,  1.0,
+       1.0, -1.0,
+       1.0,  1.0
+    ]);
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+
+    const posLoc = gl.getAttribLocation(program, 'a_position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // Uniform locations
+    const uResLoc = gl.getUniformLocation(program, 'u_resolution');
+    const uTimeLoc = gl.getUniformLocation(program, 'u_time');
+    const uScaleLoc = gl.getUniformLocation(program, 'u_blob_scale');
+    const uRimIridLoc = gl.getUniformLocation(program, 'u_rim_irid');
+    const uShockAmpLoc = gl.getUniformLocation(program, 'u_shock_amp');
+    const uSeedLoc = gl.getUniformLocation(program, 'u_seed');
+    const uShockwavesLoc = gl.getUniformLocation(program, 'u_shockwaves[0]') || gl.getUniformLocation(program, 'u_shockwaves');
+
+    gl.uniform1f(uSeedLoc, seedOffset);
+
+    // Dynamic Shockwaves Ring Buffer
+    const MAX_SHOCKWAVES = 8;
+    const shockwaveData = new Float32Array(MAX_SHOCKWAVES * 4);
+    let shockwaveIndex = 0;
+    const startTime = performance.now();
+
+    function addShockwave(x, y, amp = 1.0) {
+      const base = shockwaveIndex * 4;
+      shockwaveData[base + 0] = x;
+      shockwaveData[base + 1] = y;
+      shockwaveData[base + 2] = (performance.now() - startTime) * 0.001;
+      shockwaveData[base + 3] = amp;
+      shockwaveIndex = (shockwaveIndex + 1) % MAX_SHOCKWAVES;
+    }
+
+    // Seed initial ripples from PRNG
+    for (let i = 0; i < 4; i++) {
+      const base = i * 4;
+      const ang = prng() * Math.PI * 2;
+      const r = 0.2 + prng() * 0.55;
+      shockwaveData[base + 0] = Math.cos(ang) * r;
+      shockwaveData[base + 1] = Math.sin(ang) * r;
+      shockwaveData[base + 2] = -1.2 + i * 0.35;
+      shockwaveData[base + 3] = 0.8 + prng() * 0.4;
+    }
+    shockwaveIndex = 4;
+
+    // Interactive pointer ripple triggers (< 100 ms response)
+    let lastSpawnX = 999.0;
+    let lastSpawnY = 999.0;
+    let lastSpawnTime = 0.0;
+
+    function handlePointer(e, force = false, amp = 1.0) {
+      const minClient = Math.min(window.innerWidth, window.innerHeight);
+      const px = ((e.clientX - window.innerWidth * 0.5) / minClient) * 2.2;
+      const py = -((e.clientY - window.innerHeight * 0.5) / minClient) * 2.2;
+
+      const now = (performance.now() - startTime) * 0.001;
+      const dx = px - lastSpawnX;
+      const dy = py - lastSpawnY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (force || (dist > 0.08 && now - lastSpawnTime > 0.07)) {
+        addShockwave(px, py, amp);
+        lastSpawnX = px;
+        lastSpawnY = py;
+        lastSpawnTime = now;
+      }
+    }
+
+    window.addEventListener('pointerdown', (e) => {
+      handlePointer(e, true, 1.5);
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      handlePointer(e, false, 0.9);
+    });
+
+    // UI Controls
+    const scaleInput = document.getElementById('scale');
+    const rimInput = document.getElementById('rim');
+    const rippleInput = document.getElementById('ripple');
+
+    const valScale = document.getElementById('val_scale');
+    const valRim = document.getElementById('val_rim');
+    const valRipple = document.getElementById('val_ripple');
+
+    scaleInput.addEventListener('input', (e) => {
+      valScale.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+    rimInput.addEventListener('input', (e) => {
+      valRim.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+    rippleInput.addEventListener('input', (e) => {
+      valRipple.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+
+    // Keyboard toggle UI
+    const uiPanel = document.getElementById('ui');
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        uiPanel.style.display = (uiPanel.style.display === 'none') ? 'block' : 'none';
+      }
+    });
+
+    // Viewport resize handling
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.floor(window.innerWidth * dpr);
+      const height = Math.floor(window.innerHeight * dpr);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      gl.viewport(0, 0, width, height);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Ambient procedural droplet cadence
+    let lastAmbientTime = 0.0;
+    let nextAmbientInterval = 1.4 + prng() * 0.8;
+
+    function render() {
+      window.__frames++;
+
+      resize();
+
+      const elapsed = (performance.now() - startTime) * 0.001;
+
+      // Periodic ambient droplet plops for continuous living ripples
+      if (elapsed - lastAmbientTime > nextAmbientInterval) {
+        const ang = prng() * Math.PI * 2;
+        const r = 0.2 + prng() * 0.6;
+        addShockwave(Math.cos(ang) * r, Math.sin(ang) * r, 0.85 + prng() * 0.45);
+        lastAmbientTime = elapsed;
+        nextAmbientInterval = 1.4 + prng() * 0.9;
+      }
+
+      const scaleVal = parseFloat(scaleInput.value);
+      const rimVal = parseFloat(rimInput.value);
+      const rippleVal = parseFloat(rippleInput.value);
+
+      gl.uniform2f(uResLoc, canvas.width, canvas.height);
+      gl.uniform1f(uTimeLoc, elapsed);
+      gl.uniform1f(uScaleLoc, scaleVal);
+      gl.uniform1f(uRimIridLoc, rimVal);
+      gl.uniform1f(uShockAmpLoc, rippleVal);
+      gl.uniform4fv(uShockwavesLoc, shockwaveData);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

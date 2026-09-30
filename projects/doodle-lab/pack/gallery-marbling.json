@@ -1,0 +1,13 @@
+{
+ "title": "Liquid Marbling",
+ "blurb": "Ebru paper made of noise bending noise; drop ink and watch each drop wind into a vortex.",
+ "tags": [
+  "shader",
+  "fluid"
+ ],
+ "controls": "Tap to drop ink; Warp, Scale and Flow sliders; two ink sets",
+ "tech": "WebGL2 domain-warped fBm",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night, Claude mobile)",
+ "page": "pack/genart-session-gallery-v1.html#marble"
+}

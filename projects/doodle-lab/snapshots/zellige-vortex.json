@@ -1,0 +1,15 @@
+{
+ "title": "Zellige Vortex",
+ "blurb": "Strapwork zellige pulled into a two-armed Droste vortex that zooms and turns once per loop.",
+ "chain": "Multigrid Zellige → Droste Zoom",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "droste"
+ ],
+ "controls": "Knobs: Scale ratio, Seam softness, Tile size, Morph · Drag: scale ratio and ring radius · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#zellige-vortex"
+}

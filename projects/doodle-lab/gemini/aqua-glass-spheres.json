@@ -1,0 +1,15 @@
+{
+ "title": "Aqua Glass Spheres",
+ "blurb": "Glossy refracting bubbles drifting over green hills and a cyan sky, with lens flares and dispersion. From the Frutiger Aero style.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "glass",
+  "style study"
+ ],
+ "controls": "Sliders: Wave Height, Caustic Glow, Refraction Index · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/028-style-frutiger-aero-v2/index.html"
+}

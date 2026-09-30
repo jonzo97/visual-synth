@@ -1,0 +1,14 @@
+{
+ "title": "Plasma Polytope",
+ "blurb": "A 24-cell dragged through Ink Marbling becomes crackling plasma; an LFO swells the drag.",
+ "chain": "4D Polytope → Ink Marbling → Glow · LFO → Drag strength (UV)",
+ "tags": [
+  "synth snapshot",
+  "polytope"
+ ],
+ "controls": "Knobs: Drag strength, Noise bends noise, Halo, Morph · Mutate rolls a new look · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth patch",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#plasma-polytope"
+}

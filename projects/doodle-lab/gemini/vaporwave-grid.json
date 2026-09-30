@@ -1,0 +1,15 @@
+{
+ "title": "Vaporwave Grid",
+ "blurb": "A neon sunset over an endlessly scrolling perspective grid, with VHS wobble and scanlines. From the Vaporwave style.",
+ "tags": [
+  "gemini",
+  "artwork",
+  "grid",
+  "style study"
+ ],
+ "controls": "Sliders: Grid Speed, Sun Elevation, VHS Distortion · H hides the panel",
+ "tech": "Single-file WebGL2",
+ "made": "2026-09-24",
+ "by": "Gemini 3.8 Flash (foundry loop), curated by Claude",
+ "page": "/projects/gemini-lab/experiments/033-style-vaporwave/index.html"
+}

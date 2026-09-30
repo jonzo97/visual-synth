@@ -1,0 +1,15 @@
+{
+ "title": "Mycelium Truce",
+ "blurb": "Two colonies at truce: low rivalry lets gold and jade veins braid past each other into one network.",
+ "chain": "Slime Mold Wars (simulation)",
+ "tags": [
+  "synth snapshot",
+  "instrument",
+  "simulation"
+ ],
+ "controls": "Knobs: Rivalry, Sensor reach, Turn speed, Morph · Drag to feed the network · M mutates · MIDI CC 21–23 + mod wheel",
+ "tech": "Visual Synth instrument",
+ "made": "2026-09-24",
+ "by": "Claude Opus 5.5 (Visual Synth)",
+ "page": "/projects/shader-lab/player.html#mycelium-truce"
+}

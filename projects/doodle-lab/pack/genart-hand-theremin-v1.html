@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hand theremin v1</title>
+<style>
+/*
+  Hand theremin v1 — a feedback tunnel you play with your hands.
+
+  RUN LOCALLY (webcam + model download need a real origin, not a published artifact):
+      python3 -m http.server 8000
+      open http://localhost:8000/genart-hand-theremin-v1.html   (Chrome recommended)
+
+  Mapping (screen-left / screen-right hand, sorted by x so handedness labels never matter):
+    - Distance between hands  -> zoom (hands apart = tunnel expands, together = contracts)
+    - Midpoint of hands       -> tunnel center
+    - Tilt of the line joining hands -> twist
+    - Left hand height        -> color drift speed
+    - Each index fingertip    -> a glowing seed ring that feeds the loop
+    - Left pinch  (thumb+index) -> freeze / unfreeze the loop
+    - Right pinch             -> cycle seed shape
+    One hand: it moves the center and seeds; other params ease home.
+    No hands: everything eases back to defaults over ~1.5 s (no snapping).
+
+  Keys: H hide UI, P toggle camera preview, F fullscreen, C clear, M mouse mode.
+  If the hand model fails to load, mouse mode takes over (pointer = one hand).
+*/
+:root { --fg:#f1ebe0; --muted:#a59d95; --accent:#f0b35a; --panel:rgba(14,12,20,.8); }
+html,body { margin:0; height:100%; background:#000; color:var(--fg); overflow:hidden;
+  font:13px/1.4 "Instrument Sans", system-ui, -apple-system, sans-serif; }
+canvas#gl { position:fixed; inset:0; width:100%; height:100%; }
+#pip { position:fixed; right:12px; bottom:12px; width:240px; border-radius:8px; border:1px solid rgba(255,255,255,.2); background:#000; }
+.panel { position:fixed; left:12px; top:12px; width:270px; background:var(--panel); border-radius:10px; padding:12px 14px; backdrop-filter:blur(8px); display:grid; gap:8px; }
+.panel h1 { font-size:15px; margin:0; font-weight:600; }
+#status { color:var(--accent); font-variant-numeric:tabular-nums; }
+label { display:grid; grid-template-columns:78px 1fr 40px; gap:8px; align-items:center; color:var(--muted); }
+label output { color:var(--fg); text-align:right; font-variant-numeric:tabular-nums; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.row { display:flex; gap:6px; flex-wrap:wrap; }
+button { font:inherit; color:var(--fg); background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:5px 10px; cursor:pointer; }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.hint { color:var(--muted); font-size:12px; }
+.hidden { display:none !important; }
+#start { position:fixed; inset:0; display:grid; place-items:center; background:radial-gradient(circle,#1d1428,#000 70%); z-index:9; }
+#start div { text-align:center; max-width:420px; padding:20px; }
+#start h2 { font-weight:500; font-size:28px; margin:0 0 8px; }
+#start p { color:var(--muted); }
+#start button { font-size:15px; padding:10px 20px; border-color:var(--accent); }
+</style>
+<script src="../tools/lab-shim.js"></script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="pip" width="320" height="240"></canvas>
+
+<div class="panel" id="ui">
+  <h1>Hand theremin</h1>
+  <div id="status">Waiting for camera</div>
+  <label>Response <input id="resp" type="range" min="0.03" max="0.5" step="0.01" value="0.14"><output></output></label>
+  <label>Persistence <input id="decay" type="range" min="0.85" max="0.995" step="0.001" value="0.965"><output></output></label>
+  <label>Zoom range <input id="zr" type="range" min="0.02" max="0.2" step="0.005" value="0.09"><output></output></label>
+  <label>Seed glow <input id="glow" type="range" min="0.2" max="1.5" step="0.01" value="0.9"><output></output></label>
+  <div class="row">
+    <button id="bClear">Clear</button><button id="bPip">Preview</button><button id="bMouse">Mouse mode</button><button id="bFs">Fullscreen</button>
+  </div>
+  <div class="hint">Apart/together = zoom. Tilt = twist. Left hand height = color. Left pinch freezes, right pinch changes seed. H hides this.</div>
+</div>
+
+<div id="start"><div>
+  <h2>Hand theremin</h2>
+  <p>Your webcam drives a video feedback loop. Nothing leaves your machine. Stand back so both hands fit in frame, with light in front of you.</p>
+  <button id="go">Start camera</button>
+  <p class="hint" id="startErr"></p>
+</div></div>
+
+<video id="vid" playsinline muted class="hidden"></video>
+
+<script type="module">
+const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const $ = (id) => document.getElementById(id);
+
+// ---------- Sliders ----------
+const P = {};
+document.querySelectorAll(".panel input[type=range]").forEach(inp => {
+  const out = inp.parentElement.querySelector("output");
+  const upd = () => { P[inp.id] = +inp.value; out.textContent = (+inp.value).toFixed(inp.step.includes(".00") ? 3 : 2); };
+  inp.addEventListener("input", upd); upd();
+});
+
+// ---------- WebGL2 feedback loop ----------
+const glc = $("gl"), gl = glc.getContext("webgl2");
+const VS = `#version 300 es
+in vec2 pos; void main(){ gl_Position = vec4(pos,0.,1.); }`;
+const FEED = `#version 300 es
+precision highp float; out vec4 o;
+uniform sampler2D uPrev; uniform vec2 uRes, uCenter; uniform float uTime, uZoom, uTwist, uDrift, uDecay, uGlow;
+uniform int uShape, uSeeds; uniform vec3 uSeed[2];   // xy = uv position, z = size
+vec3 hueRot(vec3 c, float a){ const vec3 k = vec3(0.57735); float ca = cos(a); return c*ca + cross(k,c)*sin(a) + k*dot(k,c)*(1.-ca); }
+float shapeSD(vec2 s, float r, float t){
+  if (uShape == 0) return abs(length(s) - r) - 0.005;
+  if (uShape == 1) { float an = atan(s.y, s.x) + t*0.6; return abs(length(s) - r*(1. + 0.35*cos(5.*an))) - 0.005; }
+  float a = t*0.8; vec2 q = mat2(cos(a),-sin(a),sin(a),cos(a))*s; return abs(max(abs(q.x),abs(q.y)) - r) - 0.005;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes, asp = vec2(uRes.x/uRes.y, 1.);
+  vec2 d = (uv - uCenter)*asp;
+  d = mat2(cos(uTwist),-sin(uTwist),sin(uTwist),cos(uTwist))*d/uZoom;
+  vec2 suv = uCenter + d/asp;
+  float inside = step(0.,suv.x)*step(suv.x,1.)*step(0.,suv.y)*step(suv.y,1.);
+  vec3 col = hueRot(texture(uPrev, suv).rgb, uDrift)*uDecay*inside;
+  for (int i = 0; i < 2; i++) {
+    if (i >= uSeeds) break;
+    vec2 s = (uv - uSeed[i].xy)*asp;
+    float seed = smoothstep(0.004, 0., shapeSD(s, uSeed[i].z, uTime));
+    vec3 sc = 0.5 + 0.5*cos(6.28318*(uTime*0.08 + float(i)*0.5 + vec3(0.,0.33,0.67)));
+    col = max(col, seed*sc*uGlow);
+  }
+  o = vec4(col, 1.);
+}`;
+const BLIT = `#version 300 es
+precision highp float; out vec4 o; uniform sampler2D uTex; uniform vec2 uRes;
+void main(){ o = vec4(texture(uTex, gl_FragCoord.xy/uRes).rgb, 1.); }`;
+function program(fs){
+  const mk = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, "pos"); gl.linkProgram(p);
+  const c = {}; return { p, u: n => c[n] ?? (c[n] = gl.getUniformLocation(p, n)) };
+}
+let PF, PB;
+try { PF = program(FEED); PB = program(BLIT); } catch (e) { $("status").textContent = "Shader error: " + e.message; }
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+let fb = null;
+function targets(w, h){
+  const mk = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR],[gl.TEXTURE_MAG_FILTER, gl.LINEAR],[gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT); return { t, f }; };
+  fb = { a: mk(), b: mk(), w, h }; gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+function resize(){ const s = Math.min(devicePixelRatio || 1, 1.25); glc.width = innerWidth*s|0; glc.height = innerHeight*s|0; }
+addEventListener("resize", resize); resize();
+
+// ---------- Control state: targets (from hands) and smoothed values ----------
+const HOME = { zoom: 1.03, cx: 0.5, cy: 0.5, twist: 0.015, drift: 0.03 };
+const target = { ...HOME }, val = { ...HOME };
+let seeds = [], frozen = false, shape = 0, t = 0;
+const pinch = [{ on: false }, { on: false }];
+
+// ---------- Hand tracking ----------
+const vid = $("vid"), pip = $("pip"), pctx = pip.getContext("2d");
+let landmarker = null, mouseMode = false, mouse = null, lastVT = -1, hands = [];
+
+async function startCamera(){
+  $("startErr").textContent = "";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
+    vid.srcObject = stream; await vid.play();
+  } catch (e) { $("startErr").textContent = "Camera unavailable (" + e.name + "). Serve from localhost and allow access, or use mouse mode."; enableMouse(); }
+  $("start").classList.add("hidden");
+  $("status").textContent = "Loading hand model";
+  try {
+    const { FilesetResolver, HandLandmarker } = await import(MP + "/vision_bundle.mjs");
+    const files = await FilesetResolver.forVisionTasks(MP + "/wasm");
+    const opts = (delegate) => ({ baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: "VIDEO", numHands: 2,
+      minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    try { landmarker = await HandLandmarker.createFromOptions(files, opts("GPU")); }
+    catch { landmarker = await HandLandmarker.createFromOptions(files, opts("CPU")); }
+    $("status").textContent = "Show your hands";
+  } catch (e) {
+    $("status").textContent = "Hand model failed to load, mouse mode on";
+    console.error(e); enableMouse();
+  }
+}
+$("go").onclick = startCamera;
+
+function enableMouse(){ mouseMode = true; $("bMouse").textContent = "Camera mode"; }
+glc.addEventListener("pointermove", e => { if (mouseMode) mouse = { x: e.clientX/innerWidth, y: e.clientY/innerHeight }; });
+glc.addEventListener("pointerleave", () => { mouse = null; });
+
+// Pinch with hysteresis, scaled by hand size so distance from camera does not matter.
+function pinchState(lm, st){
+  const size = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) + 1e-4;
+  const r = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / size;
+  const was = st.on;
+  st.on = was ? r < 0.45 : r < 0.25;
+  return !was && st.on;   // rising edge
+}
+
+function readHands(){
+  hands = [];
+  if (mouseMode) {
+    if (mouse) hands = [{ tip: { x: mouse.x, y: 1 - mouse.y }, open: 0.5 }];
+    return;
+  }
+  if (!landmarker || vid.readyState < 2 || vid.currentTime === lastVT) return;
+  lastVT = vid.currentTime;
+  const res = landmarker.detectForVideo(vid, performance.now());
+  // Mirror x so moving your right hand moves things right. Sort by screen x.
+  const list = (res.landmarks || []).map(lm => ({ lm, mx: 1 - lm[9].x })).sort((a, b) => a.mx - b.mx);
+  list.forEach((h, i) => {
+    const lm = h.lm, openness = Math.hypot(lm[4].x - lm[20].x, lm[4].y - lm[20].y);
+    hands.push({ lm, tip: { x: 1 - lm[8].x, y: 1 - lm[8].y }, palm: { x: 1 - lm[9].x, y: 1 - lm[9].y }, open: openness, side: list.length === 2 ? i : -1 });
+  });
+  // Pinch gestures: left hand freezes, right hand cycles seed shape. A lone hand counts as right.
+  for (const h of hands) {
+    const idx = h.side === 0 ? 0 : 1;
+    if (pinchState(h.lm, pinch[idx])) { if (idx === 0) frozen = !frozen; else shape = (shape + 1) % 3; }
+  }
+  drawPip(res.landmarks || []);
+}
+
+function mapHands(){
+  Object.assign(target, HOME);
+  seeds = [];
+  if (hands.length === 2) {
+    const [L, R] = hands;
+    const dx = R.palm.x - L.palm.x, dy = R.palm.y - L.palm.y, dist = Math.hypot(dx * innerWidth/innerHeight, dy);
+    target.zoom = 1 + (Math.min(dist, 1.2) - 0.45) * P.zr * 2.2;
+    target.cx = (L.palm.x + R.palm.x) / 2; target.cy = (L.palm.y + R.palm.y) / 2;
+    target.twist = Math.max(-0.12, Math.min(0.12, Math.atan2(dy, dx) * 0.2));
+    target.drift = Math.max(0, Math.min(0.25, (L.palm.y - 0.1) * 0.3));
+  } else if (hands.length === 1) {
+    const h = hands[0].palm || hands[0].tip;
+    target.cx = h.x; target.cy = h.y;
+  }
+  for (const h of hands.slice(0, 2)) seeds.push([h.tip.x, h.tip.y, 0.02 + Math.min(h.open, 0.4) * 0.15]);
+  if (!hands.length) seeds.push([val.cx, val.cy, 0.07 + 0.02 * Math.sin(t * 2)]);
+  // Hands present: fast response. Hands gone: slow ease home (~1.5 s), never a snap.
+  const a = hands.length ? P.resp : 0.035;
+  for (const k in val) val[k] += (target[k] - val[k]) * a;
+}
+
+function drawPip(all){
+  if (pip.classList.contains("hidden")) return;
+  pctx.save(); pctx.translate(pip.width, 0); pctx.scale(-1, 1);
+  pctx.drawImage(vid, 0, 0, pip.width, pip.height);
+  pctx.fillStyle = "#f0b35a";
+  for (const lm of all) for (const p of lm) pctx.fillRect(p.x * pip.width - 2, p.y * pip.height - 2, 4, 4);
+  pctx.restore();
+}
+
+// ---------- Render loop ----------
+let last = performance.now(), fpsAcc = 0, fpsN = 0;
+function frame(now){
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+  fpsAcc += dt; fpsN++;
+  readHands(); mapHands();
+  if (fpsAcc > 0.5) {
+    if (landmarker || mouseMode) $("status").textContent = `${mouseMode ? "Mouse mode" : "Hands: " + hands.length}  |  ${Math.round(fpsN / fpsAcc)} fps${frozen ? "  |  FROZEN" : ""}  |  seed ${["ring","star","square"][shape]}`;
+    fpsAcc = 0; fpsN = 0;
+  }
+  if (PF) {
+    const w = glc.width, h = glc.height;
+    if (!fb || fb.w !== w || fb.h !== h) targets(w, h);
+    if (!frozen) {
+      gl.useProgram(PF.p); gl.viewport(0, 0, w, h); gl.bindFramebuffer(gl.FRAMEBUFFER, fb.b.f);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fb.a.t);
+      gl.uniform1i(PF.u("uPrev"), 0); gl.uniform2f(PF.u("uRes"), w, h);
+      gl.uniform2f(PF.u("uCenter"), val.cx, val.cy); gl.uniform1f(PF.u("uTime"), t);
+      gl.uniform1f(PF.u("uZoom"), val.zoom); gl.uniform1f(PF.u("uTwist"), val.twist);
+      gl.uniform1f(PF.u("uDrift"), val.drift); gl.uniform1f(PF.u("uDecay"), P.decay);
+      gl.uniform1f(PF.u("uGlow"), P.glow); gl.uniform1i(PF.u("uShape"), shape);
+      const s = new Float32Array(6); seeds.forEach((v, i) => s.set(v, i * 3));
+      gl.uniform3fv(PF.u("uSeed"), s); gl.uniform1i(PF.u("uSeeds"), seeds.length);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      const tmp = fb.a; fb.a = fb.b; fb.b = tmp;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h);
+    gl.useProgram(PB.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fb.a.t);
+    gl.uniform1i(PB.u("uTex"), 0); gl.uniform2f(PB.u("uRes"), w, h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- Buttons and keys ----------
+const clear = () => fb && targets(fb.w, fb.h);
+const togglePip = () => pip.classList.toggle("hidden");
+const toggleMouse = () => { mouseMode = !mouseMode; $("bMouse").textContent = mouseMode ? "Camera mode" : "Mouse mode"; };
+const fs = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+$("bClear").onclick = clear; $("bPip").onclick = togglePip; $("bMouse").onclick = toggleMouse; $("bFs").onclick = fs;
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if (k === "h") $("ui").classList.toggle("hidden");
+  else if (k === "p") togglePip();
+  else if (k === "f") fs();
+  else if (k === "c") clear();
+  else if (k === "m") toggleMouse();
+});
+</script>
+</body>
+</html>

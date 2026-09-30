@@ -1,0 +1,12 @@
+{
+ "title": "Strange Attractor Exposures",
+ "blurb": "Clifford and de Jong attractors built up as density exposures, printed in cyanotype and other darkroom looks.",
+ "tags": [
+  "math",
+  "attractor"
+ ],
+ "controls": "Pick an attractor and print process; sliders reshape it; H hides UI",
+ "made": "2026-09-22",
+ "by": "Claude Opus 5.5 (Genart night)",
+ "tech": "Canvas 2D density + log tone map"
+}
