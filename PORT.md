@@ -64,7 +64,7 @@ Chrome asks for permission the first time.
 
 | Where | Windows today | Linux |
 |---|---|---|
-| Native GPU backend (Dawn, `webgpu` npm package) | D3D12 | Vulkan; with `DISPLAY` or `WAYLAND_DISPLAY` set, vgpu picks Dawn's OpenGL backend in compatibility mode. Force Vulkan with `VGPU_DAWN_FLAGS=backend=vulkan`. The package ships `linux-x64` and `linux-arm64` binaries. |
+| Native GPU backend (Dawn, `webgpu` npm package) | D3D12 | Vulkan with no display; with `DISPLAY` or `WAYLAND_DISPLAY` set, vgpu picks Dawn's OpenGL backend. On Linux vgpu always asks for a compatibility-level adapter. To force Vulkan from a desktop session, set `VGPU_DAWN_FLAGS=backend=vulkan` (read in `@vgpu/adapter-node`). The package ships `linux-x64` and `linux-arm64` binaries. |
 | No GPU at all | n/a | `npx vgpu install-software-renderer` once (downloads a CPU renderer), then `VGPU_ADAPTER=software`. Slow, fine for a smoke test. |
 | `projects/doodle-lab/tools/poster.mjs` | launches the `chrome` channel with `--use-angle=d3d11` | change the flag to `--use-angle=vulkan` (or drop it) and install the browser: `npm i -D @playwright/test && npx playwright install chromium` (Playwright is not in `package.json`). |
 | Env vars in docs and test comments | PowerShell: `$env:DIVERGENT_GPU_TESTS='1'; npx vitest run ...` | `DIVERGENT_GPU_TESTS=1 npx vitest run --config vitest.config.ts projects/shader-lab/renderer-native.test.ts` |
