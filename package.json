@@ -18,7 +18,8 @@
     "preview": "vite preview --open /",
     "typecheck": "tsc -p tsconfig.json && tsc -p projects/shader-lab/tsconfig.json",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "render:tone": "vite-node --config scripts/headless/vite.config.ts scripts/render-tone.ts --"
   },
   "dependencies": {
     "@xyflow/react": "12.11.6",
